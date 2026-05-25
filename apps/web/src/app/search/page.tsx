@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { APP_NAME } from "@/lib/app-name";
-import { searchDatasets, type CatalogResult, type SearchResponse } from "@/lib/api";
+import {
+  getApiHealth,
+  searchDatasets,
+  triggerCatalogSync,
+  type CatalogResult,
+  type SearchResponse,
+} from "@/lib/api";
 import { LoadingBlock } from "@/components/LoadingBlock";
 
 function ResultCard({
@@ -66,26 +72,61 @@ export default function SearchPage() {
   const [portal, setPortal] = useState<string>("");
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const [catalogCount, setCatalogCount] = useState<number | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+
+  const runSearch = useCallback(async (query: string, portalFilter?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const health = await getApiHealth();
+      setApiOk(true);
+      setCatalogCount(health.catalog_count);
+
+      const res = await searchDatasets(query, portalFilter || undefined);
+      setData(res);
+      if (res.total === 0) {
+        if (health.catalog_count === 0) {
+          setError(
+            "Catalog is empty. Click “Load catalog” below (API must be running on port 8000).",
+          );
+        } else {
+          setError("No datasets match that search. Try a broader term like gdp, health, or population.");
+        }
+      }
+    } catch {
+      setApiOk(false);
+      setError(
+        "Could not reach the API. In a second terminal, from the project folder run: uvicorn findings_api.main:app --reload --port 8000",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    runSearch("");
+  }, [runSearch]);
 
   async function onSearch(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    await runSearch(q, portal || undefined);
+  }
+
+  async function onSyncCatalog() {
+    setSyncing(true);
     setError(null);
-    setData(null);
     try {
-      const res = await searchDatasets(q, portal || undefined);
-      setData(res);
-      if (res.total === 0) {
-        setError(
-          "No datasets found. Run catalog sync: POST /admin/sync on the API (once per environment).",
-        );
-      }
+      const result = await triggerCatalogSync();
+      setCatalogCount(Object.values(result.indexed).reduce((a, b) => a + b, 0));
+      await runSearch(q, portal || undefined);
     } catch {
-      setError("Could not reach API. Start the API on port 8000.");
+      setError("Catalog sync failed. Is the API running on http://localhost:8000 ?");
     } finally {
-      setLoading(false);
+      setSyncing(false);
     }
   }
 
@@ -103,12 +144,18 @@ export default function SearchPage() {
       <p className="mt-1 text-sm text-stone-600">
         {APP_NAME} — pick up to 2. Sources show license and attribution up front.
       </p>
+      {apiOk && catalogCount != null && catalogCount > 0 && (
+        <p className="mt-2 text-xs text-stone-500">
+          {catalogCount} datasets in catalog · API connected
+        </p>
+      )}
+
       <form onSubmit={onSearch} className="mt-6 flex flex-col gap-3 sm:flex-row">
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="e.g. GDP, unemployment, population"
+          placeholder="e.g. GDP, unemployment, population (empty = browse all)"
           className="flex-1 rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-100"
         />
         <select
@@ -128,6 +175,27 @@ export default function SearchPage() {
           {loading ? "Searching…" : "Search"}
         </button>
       </form>
+
+      {(catalogCount === 0 || apiOk === false) && (
+        <div className="mt-4 rounded-xl border border-[#e8ddd0] bg-[#f5efe6] p-4 text-sm text-stone-700">
+          <p className="font-medium text-stone-800">First-time setup</p>
+          <ol className="mt-2 list-inside list-decimal space-y-1 text-stone-600">
+            <li>
+              Start the API:{" "}
+              <code className="text-xs">uvicorn findings_api.main:app --reload --port 8000</code>
+            </li>
+            <li>Load datasets into the local catalog (once per machine):</li>
+          </ol>
+          <button
+            type="button"
+            onClick={onSyncCatalog}
+            disabled={syncing}
+            className="mt-3 rounded-lg bg-pink-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-pink-700"
+          >
+            {syncing ? "Loading catalog…" : "Load catalog"}
+          </button>
+        </div>
+      )}
 
       {loading && (
         <div className="mt-8">

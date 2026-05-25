@@ -2,9 +2,9 @@
 
 Monorepo for apps and experiments.
 
-## FunFinds (Phase 1)
+## Findings (Phase 1)
 
-**FunFinds** — search curated public datasets, run trustworthy analysis, and explore results with visuals, an AI summary, and grounded chat.
+**Findings** — search curated public datasets, run trustworthy analysis, and explore results with visuals, an AI summary, and grounded chat.
 
 - **Documentation:** [docs/findings-ai/README.md](docs/findings-ai/README.md)
 - **Web app:** `apps/web`

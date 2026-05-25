@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     ckan_sync_rows: int = 25
     wb_sync_max_indicators: int = 250
     admin_sync_token: str = ""
-    app_display_name: str = "FunFinds"
+    app_display_name: str = "Findings"
     session_data_dir: str = "./session_data"
     max_download_bytes: int = 50_000_000
 

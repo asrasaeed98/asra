@@ -11,3 +11,5 @@ def test_health():
     data = r.json()
     assert data["status"] == "ok"
     assert data["service"] == "findings-api"
+    assert "catalog_count" in data
+    assert data["catalog_count"] >= 0

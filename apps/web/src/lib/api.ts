@@ -74,10 +74,20 @@ export type SessionDetail = {
   catalogs: CatalogResult[];
 };
 
+export type HealthResponse = {
+  status: string;
+  app_name: string;
+  catalog_count: number;
+};
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+export async function getApiHealth(): Promise<HealthResponse> {
+  return apiGet<HealthResponse>("/health");
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
