@@ -1,4 +1,4 @@
-# Product notes — Findings.ai
+# Product notes — FunFinds
 
 ## Original idea (verbatim intent)
 
@@ -8,7 +8,7 @@ There are many publicly available datasets online. The app provides an easy inte
 
 | Topic | Decision |
 |-------|----------|
-| **Name** | Findings.ai (display); docs folder `findings-ai` |
+| **Name** | FunFinds (display); docs folder `FunFinds` |
 | **Data access** | Specific portals only — no arbitrary URLs |
 | **Licenses** | Strictest route: CC0, public domain, vetted gov open only |
 | **Datasets per run** | 1–2 |
@@ -33,4 +33,4 @@ There are many publicly available datasets online. The app provides an easy inte
 
 ## Alternates considered
 
-- **OpenFindings**, **DataBrief**, **Claridata** — use if Findings.ai domain/trademark blocked.
+- **OpenFindings**, **DataBrief**, **Claridata** — use if FunFinds domain/trademark blocked.

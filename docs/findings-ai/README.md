@@ -1,6 +1,6 @@
-# Findings.ai — Phase 1
+# FunFinds — Phase 1
 
-**Findings.ai** helps anyone search curated public datasets, run trustworthy automated analysis, and explore results through clear visuals, an AI summary, and grounded chat.
+**FunFinds** helps anyone search curated public datasets, run trustworthy automated analysis, and explore results through clear visuals, an AI summary, and grounded chat.
 
 ## Principles
 
@@ -46,7 +46,7 @@ apps/web/          # Next.js frontend
 apps/api/          # FastAPI backend + worker hooks
 packages/          # Shared types (optional)
 docker-compose.yml # Postgres, Redis
-docs/findings-ai/  # This folder
+docs/FunFinds/  # This folder
 ```
 
 ## Status

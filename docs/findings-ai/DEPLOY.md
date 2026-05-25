@@ -14,7 +14,7 @@
 1. Import GitHub repo `asrasaeed98/asra`
 2. Root directory: **`apps/web`**
 3. Environment: `NEXT_PUBLIC_API_URL=https://<your-railway-api>.up.railway.app`
-4. Optional: `NEXT_PUBLIC_APP_NAME=OpenFinds`
+4. Optional: `NEXT_PUBLIC_APP_NAME=FunFinds`
 
 ## Railway (API)
 
