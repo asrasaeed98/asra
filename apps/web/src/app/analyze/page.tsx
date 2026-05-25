@@ -42,9 +42,9 @@ function AnalyzeContent() {
       <div className="mb-8 flex justify-center">
         <FunFindsLoader message={phaseMessage} size="lg" />
       </div>
-      <h1 className="text-center text-xl font-semibold text-slate-800">Analysis in progress</h1>
-      <p className="mt-1 text-center text-sm text-slate-500">Usually 2–4 minutes</p>
-      <ol className="mt-8 space-y-3 rounded-xl border border-pink-100 bg-white p-4">
+      <h1 className="text-center text-xl font-semibold text-stone-800">Analysis in progress</h1>
+      <p className="mt-1 text-center text-sm text-stone-500">Usually 2–4 minutes</p>
+      <ol className="mt-8 space-y-3 rounded-xl border border-[#e8ddd0] bg-white p-4">
         {PHASES.map((p, i) => (
           <li key={p.id} className="flex items-center gap-3 text-sm">
             <span
@@ -53,18 +53,18 @@ function AnalyzeContent() {
                   ? "bg-pink-500 text-white"
                   : i === phaseIndex
                     ? "bg-pink-600 text-white ring-2 ring-pink-200"
-                    : "bg-pink-50 text-pink-300"
+                    : "bg-[#f5efe6] text-stone-400"
               }`}
             >
               {i < phaseIndex ? "✓" : i + 1}
             </span>
-            <span className={i <= phaseIndex ? "text-slate-800" : "text-slate-400"}>
+            <span className={i <= phaseIndex ? "text-stone-800" : "text-stone-400"}>
               {p.label}
             </span>
           </li>
         ))}
       </ol>
-      <p className="mt-6 text-center text-xs text-slate-400">
+      <p className="mt-6 text-center text-xs text-stone-400">
         Demo progress — real worker wiring in slice 5.
       </p>
     </div>

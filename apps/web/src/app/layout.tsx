@@ -28,14 +28,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-700`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased text-stone-700`}
       >
-        <header className="border-b border-pink-100 bg-white/90 backdrop-blur-md">
+        <header className="border-b border-[#e8ddd0] bg-[#fffcf8]/95 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
-            <Link href="/" className="text-lg font-semibold tracking-tight text-pink-700">
+            <Link href="/" className="text-lg font-semibold tracking-tight text-stone-800">
               {APP_NAME}
+              <span className="text-pink-500">.</span>
             </Link>
-            <nav className="flex gap-4 text-sm text-slate-600">
+            <nav className="flex gap-4 text-sm text-stone-600">
               <Link href="/search" className="hover:text-pink-600">
                 Search
               </Link>

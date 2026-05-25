@@ -11,7 +11,6 @@ type FunFindsLoaderProps = {
 
 const sizes = { sm: 48, md: 80, lg: 120 };
 
-/** Cute loader: uses /funfinds-loader.gif if present, else animated SVG mascot. */
 export function FunFindsLoader({
   message = "Working on it…",
   size = "md",
@@ -49,44 +48,23 @@ export function FunFindsLoader({
           aria-hidden
           className="ff-animate-bounce"
         >
-          <ellipse cx="60" cy="68" rx="42" ry="38" fill="#fbcfe8" />
-          <ellipse cx="60" cy="70" rx="36" ry="32" fill="#f9a8d4" />
-          <circle cx="45" cy="58" r="5" fill="#831843" />
-          <circle cx="75" cy="58" r="5" fill="#831843" />
+          <ellipse cx="60" cy="68" rx="42" ry="38" fill="#f5efe6" />
+          <ellipse cx="60" cy="70" rx="36" ry="32" fill="#e8ddd0" />
+          <circle cx="45" cy="58" r="5" fill="#57534e" />
+          <circle cx="75" cy="58" r="5" fill="#57534e" />
           <path
             d="M 48 72 Q 60 82 72 72"
             fill="none"
-            stroke="#be185d"
+            stroke="#e879a9"
             strokeWidth="3"
             strokeLinecap="round"
           />
-          <circle
-            className="ff-animate-sparkle"
-            cx="28"
-            cy="32"
-            r="6"
-            fill="#ec4899"
-            style={{ animationDelay: "0s" }}
-          />
-          <circle
-            className="ff-animate-sparkle"
-            cx="92"
-            cy="28"
-            r="5"
-            fill="#f472b6"
-            style={{ animationDelay: "0.3s" }}
-          />
-          <circle
-            className="ff-animate-sparkle"
-            cx="60"
-            cy="18"
-            r="4"
-            fill="#db2777"
-            style={{ animationDelay: "0.6s" }}
-          />
+          <circle className="ff-animate-sparkle" cx="28" cy="32" r="6" fill="#f472b6" />
+          <circle className="ff-animate-sparkle" cx="92" cy="28" r="5" fill="#ec4899" />
+          <circle className="ff-animate-sparkle" cx="60" cy="18" r="4" fill="#e879a9" />
         </svg>
       )}
-      <p className="text-center text-sm font-medium text-pink-700">{message}</p>
+      <p className="text-center text-sm font-medium text-stone-600">{message}</p>
       <span className="sr-only">Loading</span>
     </div>
   );

@@ -3,73 +3,56 @@
 ## Principles
 
 1. **Simple and effective** — one primary action per screen; minimal chrome.
-2. **Friendly trust** — soft pink palette feels approachable; computed results stay clear and readable.
-3. **Feedback everywhere** — loading always shows the FunFinds loader (gif or animated mascot).
+2. **Warm and calm** — **beige/cream** surfaces; **pink** only as accent (not dominant).
+3. **Feedback everywhere** — FunFinds loader on async waits.
 
-## Color palette (pink-ish)
+## Color palette
+
+### Primary (surfaces & chrome)
 
 | Token | Hex | Use |
 |-------|-----|-----|
-| `pink-50` | `#fdf2f8` | Page background gradient start |
-| `pink-100` | `#fce7f3` | Cards, subtle fills |
-| `pink-200` | `#fbcfe8` | Borders, hover |
-| `pink-500` | `#ec4899` | Primary buttons, links |
-| `pink-600` | `#db2777` | Primary button hover |
-| `pink-700` | `#be185d` | Headings accent |
-| `rose-400` | `#fb7185` | Secondary highlights |
-| `slate-700` | `#334155` | Body text |
-| `slate-500` | `#64748b` | Muted text |
+| `cream-50` | `#faf8f5` | Page background |
+| `cream-100` | `#f5efe6` | Cards, inputs, loader panels |
+| `cream-200` | `#e8ddd0` | Borders, dividers |
+| `cream-300` | `#ddd0c0` | Stronger borders |
+| `stone-700` | `#44403c` | Body text |
+| `stone-600` | `#57534e` | Secondary text |
+| `stone-500` | `#78716c` | Muted text |
 
-**Avoid:** harsh pure black, neon greens (old prototype). **AI summary** block uses soft violet-pink (`pink-100` + border `pink-200`), not generic purple.
+### Accent (pink — use sparingly)
+
+| Token | Hex | Use |
+|-------|-----|-----|
+| `pink-500` | `#ec4899` | Primary CTA buttons, active step |
+| `pink-600` | `#db2777` | CTA hover, links hover |
+| `pink-400` | `#f472b6` | Bullets, labels, loader sparkles |
+| `pink-100` | `#fce7f3` | Attribution badges, AI summary tint |
+
+**Do not:** pink page backgrounds, pink headers, or pink card fills.
 
 ## Typography
 
-- **Font:** Geist Sans (already in Next.js).
-- **Headings:** semibold, `text-zinc-800` / `pink-700` for H1 accent word.
-- **Body:** `text-sm` / `text-base`, `text-slate-600`.
-
-## Layout
-
-- Max width `max-w-3xl` for wizard steps; `max-w-5xl` for header.
-- Generous padding `px-4 py-10`.
-- Rounded corners `rounded-xl` on cards and buttons.
+- **Font:** Geist Sans
+- **Headings:** `text-stone-800`; accent word `text-pink-600` optional
+- **Body:** `text-stone-600` / `text-stone-500`
 
 ## Components
 
-| Component | When |
-|-----------|------|
-| `FunFindsLoader` | Any async wait > 300ms (search, analyze, results load) |
-| `LoadingBlock` | Full-section placeholder with message |
-| `Button` primary | Pink-600, white text |
-| `Card` | White bg, `border-pink-100`, light shadow |
+| Component | Style |
+|-----------|--------|
+| **Header** | `bg-white/90`, `border-cream-200`, logo `text-stone-800` with pink accent optional |
+| **Primary button** | `bg-pink-600` (accent action on cream page) |
+| **Secondary button** | `bg-cream-100` `border-cream-300` `text-stone-700` |
+| **Card** | `bg-white` or `bg-cream-50`, `border-cream-200` |
+| **Input** | `bg-white`, `border-cream-300`, focus `ring-pink-200` |
+| **AI summary** | `bg-cream-50`, `border-cream-200`, title `text-pink-800` |
 
-## Loading / “cute gif”
+## Loading
 
-1. **Default:** animated SVG mascot in `FunFindsLoader` (bouncing blob + sparkles) — no external deps.
-2. **Optional:** place `public/funfinds-loader.gif` — component prefers gif if file exists (checked client-side or static path).
-
-Use loader on:
-
-- Search submit
-- Analyze progress (beside or above step list)
-- Results initial fetch
-- Future: chat “thinking”
-
-## Wizard steps (visual)
-
-1. **Home** — hero, one CTA “Search datasets”
-2. **Search** — search bar + portal filter + result cards
-3. **Review** — summary list, filters (slice 3), pink CTA “Run analysis”
-4. **Analyze** — loader + stepper
-5. **Results** — AI summary card → computed findings → charts → chat
+- `FunFindsLoader` — mascot uses cream/pink (not all-pink blob on pink bg)
+- Optional `public/funfinds-loader.gif`
 
 ## Accessibility
 
-- Loader includes `role="status"` and `aria-live="polite"`.
-- Pink buttons maintain contrast ratio ≥ 4.5:1 (white on pink-600).
-
-## Not in Phase 1 UI
-
-- Dark mode
-- Complex dashboard / side nav
-- Custom illustration set beyond loader
+- Pink CTAs: white text on `pink-600` (accent only, small areas)

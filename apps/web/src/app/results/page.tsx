@@ -25,26 +25,26 @@ function ResultsContent() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <p className="text-xs text-slate-400">Session {session}</p>
-      <section className="mt-4 rounded-xl border border-pink-200 bg-gradient-to-br from-pink-50 to-white p-5">
-        <h2 className="text-sm font-semibold text-pink-800">Executive summary (AI-generated)</h2>
-        <p className="mt-2 text-sm text-slate-600">
+      <p className="text-xs text-stone-400">Session {session}</p>
+      <section className="mt-4 rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-5">
+        <h2 className="text-sm font-semibold text-pink-700">Executive summary (AI-generated)</h2>
+        <p className="mt-2 text-sm text-stone-600">
           Placeholder — Anthropic summary runs in finalize (slice 7). Numbers in the cards
           below are authoritative.
         </p>
       </section>
       <section className="mt-8">
-        <h2 className="text-lg font-semibold text-slate-800">Key results (computed)</h2>
-        <div className="mt-4 rounded-xl border border-pink-100 bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-700">No findings yet</p>
-          <p className="mt-1 text-xs text-slate-500">
+        <h2 className="text-lg font-semibold text-stone-800">Key results (computed)</h2>
+        <div className="mt-4 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-stone-700">No findings yet</p>
+          <p className="mt-1 text-xs text-stone-500">
             Analysis engine (slices 4–6) will populate cards and charts here.
           </p>
         </div>
       </section>
-      <section className="mt-8 rounded-xl border border-pink-100 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-800">Chat</h2>
-        <p className="mt-2 text-sm text-slate-600">Grounded chat — slice 8.</p>
+      <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5">
+        <h2 className="text-sm font-semibold text-stone-800">Chat</h2>
+        <p className="mt-2 text-sm text-stone-600">Grounded chat — slice 8.</p>
       </section>
       <Link
         href="/search"
