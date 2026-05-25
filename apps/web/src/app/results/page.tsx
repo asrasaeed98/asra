@@ -1,41 +1,55 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { LoadingBlock } from "@/components/LoadingBlock";
 
 function ResultsContent() {
   const params = useSearchParams();
   const session = params.get("session") ?? "unknown";
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <LoadingBlock message="Loading your findings…" minHeight="min-h-[40vh]" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <p className="text-xs text-zinc-500">Session {session}</p>
-      <section className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4">
-        <h2 className="text-sm font-semibold text-violet-900">
-          Executive summary (AI-generated)
-        </h2>
-        <p className="mt-2 text-sm text-violet-800">
-          Placeholder — Anthropic summary runs in finalize (slice 7). Numbers below
-          are authoritative.
+      <p className="text-xs text-slate-400">Session {session}</p>
+      <section className="mt-4 rounded-xl border border-pink-200 bg-gradient-to-br from-pink-50 to-white p-5">
+        <h2 className="text-sm font-semibold text-pink-800">Executive summary (AI-generated)</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Placeholder — Anthropic summary runs in finalize (slice 7). Numbers in the cards
+          below are authoritative.
         </p>
       </section>
       <section className="mt-8">
-        <h2 className="text-lg font-semibold">Key results (computed)</h2>
-        <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
-          <p className="text-sm font-medium">No findings yet</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            Connect analysis engine (slices 4–6) to populate Finding cards and charts.
+        <h2 className="text-lg font-semibold text-slate-800">Key results (computed)</h2>
+        <div className="mt-4 rounded-xl border border-pink-100 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-700">No findings yet</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Analysis engine (slices 4–6) will populate cards and charts here.
           </p>
         </div>
       </section>
-      <section className="mt-8 rounded-xl border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold">Chat</h2>
-        <p className="mt-2 text-sm text-zinc-600">
-          Grounded chat with SQL citations — slice 8.
-        </p>
+      <section className="mt-8 rounded-xl border border-pink-100 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-800">Chat</h2>
+        <p className="mt-2 text-sm text-slate-600">Grounded chat — slice 8.</p>
       </section>
-      <Link href="/search" className="mt-8 inline-block text-sm text-emerald-700">
+      <Link
+        href="/search"
+        className="mt-8 inline-block text-sm font-medium text-pink-600 hover:text-pink-700"
+      >
         ← New search
       </Link>
     </div>
@@ -44,7 +58,7 @@ function ResultsContent() {
 
 export default function ResultsPage() {
   return (
-    <Suspense fallback={<p className="p-10 text-sm">Loading…</p>}>
+    <Suspense fallback={<LoadingBlock message="Loading results…" minHeight="min-h-[50vh]" />}>
       <ResultsContent />
     </Suspense>
   );

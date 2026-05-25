@@ -2,13 +2,15 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { FunFindsLoader } from "@/components/FunFindsLoader";
+import { LoadingBlock } from "@/components/LoadingBlock";
 
 const PHASES = [
   { id: "ingest", label: "Loading your data" },
   { id: "prepare", label: "Preparing table" },
   { id: "join", label: "Combining datasets" },
   { id: "analyze", label: "Running analysis" },
-  { id: "finalize", label: "Building results" },
+  { id: "finalize", label: "Building results & summary" },
 ];
 
 function AnalyzeContent() {
@@ -16,6 +18,7 @@ function AnalyzeContent() {
   const router = useRouter();
   const ids = params.get("ids") ?? "";
   const [phaseIndex, setPhaseIndex] = useState(0);
+  const [phaseMessage, setPhaseMessage] = useState(PHASES[0].label);
 
   useEffect(() => {
     if (!ids) return;
@@ -26,7 +29,9 @@ function AnalyzeContent() {
           setTimeout(() => router.push(`/results?session=demo`), 800);
           return i;
         }
-        return i + 1;
+        const next = i + 1;
+        setPhaseMessage(PHASES[next].label);
+        return next;
       });
     }, 1200);
     return () => clearInterval(t);
@@ -34,30 +39,33 @@ function AnalyzeContent() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
-      <h1 className="text-2xl font-semibold">Analysis in progress</h1>
-      <p className="mt-1 text-sm text-zinc-600">Usually 2–4 minutes</p>
-      <ol className="mt-8 space-y-4">
+      <div className="mb-8 flex justify-center">
+        <FunFindsLoader message={phaseMessage} size="lg" />
+      </div>
+      <h1 className="text-center text-xl font-semibold text-slate-800">Analysis in progress</h1>
+      <p className="mt-1 text-center text-sm text-slate-500">Usually 2–4 minutes</p>
+      <ol className="mt-8 space-y-3 rounded-xl border border-pink-100 bg-white p-4">
         {PHASES.map((p, i) => (
           <li key={p.id} className="flex items-center gap-3 text-sm">
             <span
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
                 i < phaseIndex
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-pink-500 text-white"
                   : i === phaseIndex
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-200 text-zinc-500"
+                    ? "bg-pink-600 text-white ring-2 ring-pink-200"
+                    : "bg-pink-50 text-pink-300"
               }`}
             >
               {i < phaseIndex ? "✓" : i + 1}
             </span>
-            <span className={i <= phaseIndex ? "text-zinc-900" : "text-zinc-400"}>
+            <span className={i <= phaseIndex ? "text-slate-800" : "text-slate-400"}>
               {p.label}
             </span>
           </li>
         ))}
       </ol>
-      <p className="mt-8 text-xs text-zinc-500">
-        Demo progress UI — worker integration in slice 5.
+      <p className="mt-6 text-center text-xs text-slate-400">
+        Demo progress — real worker wiring in slice 5.
       </p>
     </div>
   );
@@ -65,7 +73,7 @@ function AnalyzeContent() {
 
 export default function AnalyzePage() {
   return (
-    <Suspense fallback={<p className="p-10 text-sm">Loading…</p>}>
+    <Suspense fallback={<LoadingBlock message="Starting analysis…" minHeight="min-h-[50vh]" />}>
       <AnalyzeContent />
     </Suspense>
   );
