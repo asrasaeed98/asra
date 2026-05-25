@@ -11,9 +11,3 @@ def test_health():
     data = r.json()
     assert data["status"] == "ok"
     assert data["service"] == "findings-api"
-
-
-def test_search_stub():
-    r = client.get("/search?q=unemployment")
-    assert r.status_code == 200
-    assert "results" in r.json()

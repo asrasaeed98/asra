@@ -31,3 +31,5 @@ data/sessions/
 .coverage
 htmlcov/
 .pytest_cache/
+findings_local.db
+apps/api/findings_local.db

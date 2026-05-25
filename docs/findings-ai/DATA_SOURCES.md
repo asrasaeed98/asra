@@ -47,3 +47,9 @@ Map to internal enum:
 ## Not in Phase 1
 
 - Kaggle, Hugging Face, arbitrary URLs, PDF-only resources (hidden by default in search)
+
+## World Bank sync
+
+- Endpoint: `https://api.worldbank.org/v2/indicator?format=json`
+- Env: `WB_SYNC_MAX_INDICATORS` (default 250)
+- Trigger: `POST /admin/sync`

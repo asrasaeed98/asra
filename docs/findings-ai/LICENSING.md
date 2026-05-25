@@ -31,3 +31,7 @@ Results footer: analysis on copy retrieved [date]; not affiliated with publisher
 - [ ] Takedown / mis-license contact
 
 See [LAUNCH_LEGAL_CHECKLIST.md](./LAUNCH_LEGAL_CHECKLIST.md).
+
+## World Bank (second portal)
+
+World Bank indicators use **CC BY 4.0** with mandatory attribution. They are indexed only under `portal=world_bank` and show `attribution_required=true` in search results. data.gov remains **CC0/PD only**.
