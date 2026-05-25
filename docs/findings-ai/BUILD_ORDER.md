@@ -4,26 +4,26 @@
 
 All files in `docs/findings-ai/`.
 
-## Slice 1 — Monorepo scaffold
+## Slice 1 — Monorepo scaffold ✅
 
-- [ ] `apps/web` — Next.js 15 App Router, Tailwind
-- [ ] `apps/api` — FastAPI, health check, CORS
-- [ ] `docker-compose.yml` — Postgres 16, Redis 7
-- [ ] `.env.example` — `ANTHROPIC_API_KEY`, `DATABASE_URL`, etc.
-- [ ] Root `package.json` workspaces (optional) or README run instructions
+- [x] `apps/web` — Next.js 15 App Router, Tailwind
+- [x] `apps/api` — FastAPI, health check, CORS
+- [x] `docker-compose.yml` — Postgres 16, Redis 7
+- [x] `.env.example` — `ANTHROPIC_API_KEY`, `DATABASE_URL`, etc.
+- [x] Root `package.json` workspaces (optional) or README run instructions
 
-## Slice 2 — Catalog and search
+## Slice 2 — Catalog and search ✅
 
-- [ ] CKAN `package_search` / `package_show` sync job
-- [ ] License normalization + reject unknown
-- [ ] Postgres `catalog_resources` + FTS
-- [ ] `GET /search` + search page UI
+- [x] data.gov Catalog API + World Bank sync
+- [x] License normalization + reject unknown
+- [x] `catalog_resources` + search
+- [x] `GET /search` + search page UI
 
-## Slice 3 — Session and ingest
+## Slice 3 — Session and ingest ✅
 
-- [ ] `POST /sessions` with 1–2 resource IDs
-- [ ] Download → DuckDB ingest
-- [ ] Review UI: filter, sample, join keys, ML toggle
+- [x] `POST /sessions` with 1–2 resource IDs
+- [x] Download → DuckDB ingest
+- [x] Review UI: filter, sample, join keys, ML toggle
 
 ## Slice 4 — Analysis engine
 

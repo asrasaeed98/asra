@@ -6,9 +6,8 @@ Use this when you return to the project after a break.
 
 **Yes.** Open the same repo/workspace (`asra` on GitHub). Your code, docs, and branch history live there.
 
-- **Branch with latest work:** `cursor/findings-ai-phase1-b226`
-- **PR (draft):** https://github.com/asrasaeed98/asra/pull/1
-- **Main** may be behind until you merge the PR.
+- **Branch with latest work:** `cursor/findings-ai-slice3-ee9c` (slice 3) or `main` after merge
+- **PR (draft):** open from slice 3 branch when pushed
 
 ## Do you need a handoff doc?
 
@@ -62,13 +61,12 @@ docker compose up -d
 - [x] FunFinds web wizard UI (cream/beige + pink accents, loader)
 - [x] FastAPI: health, search, sessions (stubs), admin sync
 - [x] Catalog: data.gov Catalog API + World Bank, license + attribution in UI
-- [ ] **Next:** Slice 3 — real session + DuckDB ingest + review filters
+- [x] Slice 3 — session + DuckDB ingest + review filters (API + web)
+- [ ] **Next:** Slice 4 — analysis engine (`profile` → `selector` → `runner`)
 
 ## What to tell the agent next
 
-> “Continue FunFinds slice 3: session + ingest + DuckDB on branch `cursor/findings-ai-phase1-b226`.”
-
-Or merge PR first and branch from `main`.
+> “Continue FunFinds slice 4: analysis engine on `main`.”
 
 ## Secrets (do not commit)
 

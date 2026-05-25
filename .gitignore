@@ -19,6 +19,7 @@ apps/web/out/
 
 # Data / runtime
 *.duckdb
+session_data/
 data/sessions/
 .DS_Store
 

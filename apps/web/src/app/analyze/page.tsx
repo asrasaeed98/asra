@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FunFindsLoader } from "@/components/FunFindsLoader";
 import { LoadingBlock } from "@/components/LoadingBlock";
+import { getSessionStatus, type SessionStatus } from "@/lib/api";
 
 const PHASES = [
   { id: "ingest", label: "Loading your data" },
@@ -13,29 +14,90 @@ const PHASES = [
   { id: "finalize", label: "Building results & summary" },
 ];
 
+function phaseIndexFromStatus(status: SessionStatus): number {
+  const map: Record<string, number> = {
+    ingest: 0,
+    ready: 1,
+    prepare: 1,
+    join: 2,
+    analyze: 3,
+    finalize: 4,
+  };
+  return map[status.phase] ?? 0;
+}
+
 function AnalyzeContent() {
   const params = useSearchParams();
   const router = useRouter();
-  const ids = params.get("ids") ?? "";
+  const sessionId = params.get("session") ?? "";
+  const [status, setStatus] = useState<SessionStatus | null>(null);
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [phaseMessage, setPhaseMessage] = useState(PHASES[0].label);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!ids) return;
-    const t = setInterval(() => {
-      setPhaseIndex((i) => {
-        if (i >= PHASES.length - 1) {
-          clearInterval(t);
-          setTimeout(() => router.push(`/results?session=demo`), 800);
-          return i;
+    if (!sessionId) return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const s = await getSessionStatus(sessionId);
+        if (cancelled) return;
+        setStatus(s);
+        const idx = phaseIndexFromStatus(s);
+        setPhaseIndex(idx);
+        setPhaseMessage(s.message ?? PHASES[idx]?.label ?? PHASES[0].label);
+
+        if (s.status === "ready" && s.phase === "ready") {
+          router.replace(`/review?session=${sessionId}`);
+          return;
         }
-        const next = i + 1;
-        setPhaseMessage(PHASES[next].label);
-        return next;
-      });
-    }, 1200);
-    return () => clearInterval(t);
-  }, [ids, router]);
+        if (s.status === "failed") {
+          setError(s.message ?? "Analysis failed");
+          return;
+        }
+        if (s.phase === "finalize" || (s.status === "analyzing" && s.percent >= 100)) {
+          setTimeout(() => router.push(`/results?session=${sessionId}`), 800);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not reach API");
+      }
+    }
+
+    poll();
+    const t = setInterval(poll, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [sessionId, router]);
+
+  if (!sessionId) {
+    return (
+      <p className="text-center text-sm text-stone-600">
+        Missing session.{" "}
+        <a href="/search" className="text-pink-600 hover:text-pink-700">
+          Start from search
+        </a>
+        .
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-10 text-center">
+        <p className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm text-pink-900">
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  const timeHint =
+    status?.estimate_remaining_sec != null
+      ? `About ${Math.ceil(status.estimate_remaining_sec / 60)} min left`
+      : "Usually 2–4 minutes";
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
@@ -43,7 +105,10 @@ function AnalyzeContent() {
         <FunFindsLoader message={phaseMessage} size="lg" />
       </div>
       <h1 className="text-center text-xl font-semibold text-stone-800">Analysis in progress</h1>
-      <p className="mt-1 text-center text-sm text-stone-500">Usually 2–4 minutes</p>
+      <p className="mt-1 text-center text-sm text-stone-500">{timeHint}</p>
+      {status?.percent != null && status.percent > 0 && (
+        <p className="mt-2 text-center text-xs text-stone-400">{status.percent}%</p>
+      )}
       <ol className="mt-8 space-y-3 rounded-xl border border-[#e8ddd0] bg-white p-4">
         {PHASES.map((p, i) => (
           <li key={p.id} className="flex items-center gap-3 text-sm">
@@ -65,7 +130,7 @@ function AnalyzeContent() {
         ))}
       </ol>
       <p className="mt-6 text-center text-xs text-stone-400">
-        Demo progress — real worker wiring in slice 5.
+        Ingest is live; full analysis engine ships in slice 4–5.
       </p>
     </div>
   );
