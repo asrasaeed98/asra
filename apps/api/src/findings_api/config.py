@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     wb_sync_max_indicators: int = 250
     admin_sync_token: str = ""
     app_display_name: str = "FunFinds"
+    session_data_dir: str = "./session_data"
+    max_download_bytes: int = 50_000_000
 
 
 settings = Settings()

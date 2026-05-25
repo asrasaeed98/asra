@@ -8,13 +8,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from findings_api.db import Base, get_db
+from findings_api import models  # noqa: F401 — register all tables
+from findings_api.db import Base, get_db, get_engine, get_session_factory
 from findings_api.main import app
 from findings_api.models import CatalogResource
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -22,6 +23,10 @@ def client():
     )
     Base.metadata.create_all(bind=engine)
     TestingSession = sessionmaker(bind=engine)
+
+    get_engine.cache_clear()
+    monkeypatch.setattr("findings_api.db.get_engine", lambda: engine)
+    monkeypatch.setattr("findings_api.db.get_session_factory", lambda: TestingSession)
 
     def override_get_db():
         db = TestingSession()
@@ -59,3 +64,4 @@ def client():
         yield c
 
     app.dependency_overrides.clear()
+    get_engine.cache_clear()

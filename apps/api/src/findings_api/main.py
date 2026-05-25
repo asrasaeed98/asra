@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from findings_api import __version__
 from findings_api.config import settings
 from findings_api.db import init_db
-from findings_api.routers import admin, health, search, sessions
+from findings_api.routers import admin, datasets, health, search, sessions
 
 _display = settings.app_display_name
 
@@ -35,5 +35,6 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(search.router)
+app.include_router(datasets.router)
 app.include_router(sessions.router)
 app.include_router(admin.router)
