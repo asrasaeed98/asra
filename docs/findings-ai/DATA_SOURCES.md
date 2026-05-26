@@ -5,6 +5,8 @@
 - **API base:** `https://catalog.data.gov/api/3/action`
 - **Actions:** `package_search`, `package_show`
 - **Per resource:** `url`, `format`, `size`, license on package/resource
+- **Sync:** `sync_ckan.py` (resource-level CSV/JSON) + URL probe — see [CATALOG_QA.md](./CATALOG_QA.md)
+- **Legacy:** Catalog API sync (`sync_datagov.py`) is deprecated — it indexed landing pages and ZIP links
 
 ## Phase 1 optional second portal
 

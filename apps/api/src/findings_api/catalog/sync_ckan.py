@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy.orm import Session
 
+from findings_api.catalog.quality import apply_probe
+from findings_api.catalog.probe import probe_url
 from findings_api.config import settings
 from findings_api.licensing import (
     attribution_required,
@@ -39,13 +41,14 @@ def _allowed_formats(fmt: str | None) -> bool:
     if not fmt:
         return False
     f = fmt.upper()
-    return f in ("CSV", "JSON", "XLS", "XLSX", "TEXT/CSV", "APPLICATION/JSON")
+    return f in ("CSV", "JSON", "TEXT/CSV", "APPLICATION/JSON")
 
 
 async def sync_ckan(session: Session, client: httpx.AsyncClient) -> int:
     """Search CKAN and upsert strict-license resources."""
     base = settings.data_gov_ckan_api.rstrip("/")
     count = 0
+    ingestible = 0
     rows = min(settings.ckan_sync_rows, 100)
     max_packages = settings.ckan_sync_max_packages
 
@@ -120,10 +123,19 @@ async def sync_ckan(session: Session, client: httpx.AsyncClient) -> int:
                 byte_size=res.get("size"),
                 updated_at=datetime.now(timezone.utc),
                 search_text=_build_search_text(title, desc, org, tags),
+                ingestible=False,
             )
+            if settings.catalog_probe_enabled:
+                probe = await probe_url(url, client=client, portal="data_gov")
+                apply_probe(rec, probe)
+            else:
+                rec.ingestible = True
+                rec.detected_format = fmt.upper()[:32]
+            if rec.ingestible:
+                ingestible += 1
             session.merge(rec)
             count += 1
 
     session.commit()
-    logger.info("CKAN sync: %s resources", count)
+    logger.info("CKAN sync: %s resources indexed (%s ingestible)", count, ingestible)
     return count

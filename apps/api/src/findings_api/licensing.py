@@ -27,8 +27,12 @@ def normalize_license(raw: str | None) -> str | None:
     key = str(raw).strip().lower()
     if key in _RAW_TO_NORMALIZED:
         return _RAW_TO_NORMALIZED[key]
-    if "creative commons zero" in key or key == "cc0":
+    if "creativecommons.org/publicdomain/zero" in key or "creative commons zero" in key or key == "cc0":
         return "CC0"
+    if "usa.gov/publicdomain" in key or "publicdomain/label" in key:
+        return "US_PD"
+    if "usa.gov/government-works" in key or "government-works" in key:
+        return "US_GOV_WORK"
     if "public domain" in key:
         return "US_PD"
     if "government work" in key or "us government" in key:

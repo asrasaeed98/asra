@@ -10,6 +10,8 @@ from pathlib import Path
 import httpx
 from sqlalchemy.orm import Session
 
+from findings_api.analysis.join import safe_join_columns
+from findings_api.analysis.labels import column_entry
 from findings_api.config import settings
 from findings_api.ingest.download import DownloadError, fetch_resource_bytes
 from findings_api.ingest.duckdb_store import (
@@ -46,19 +48,21 @@ def _set_progress(
 def _profile_table(conn, table: str) -> dict:
     total = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
     cols = conn.execute(f"DESCRIBE {table}").fetchall()
-    columns = [{"name": row[0], "type": row[1]} for row in cols]
-    sample_rows = conn.execute(f"SELECT * FROM {table} LIMIT 5").fetchdf().to_dict(orient="records")
+    columns = []
+    for row in cols:
+        entry = column_entry(row[0])
+        entry["type"] = row[1]
+        columns.append(entry)
     return {
         "table": table,
         "row_count": total,
         "columns": columns,
-        "sample_rows": sample_rows,
     }
 
 
 def _load_bytes(conn, table: str, data: bytes, kind: str, portal: str) -> None:
     if kind == "json" or portal == "world_bank":
-        _load_json(conn, table, data)
+        _load_json(conn, table, data, portal=portal)
         return
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
         tmp.write(data)
@@ -72,7 +76,31 @@ def _load_bytes(conn, table: str, data: bytes, kind: str, portal: str) -> None:
         Path(tmp_path).unlink(missing_ok=True)
 
 
-def _load_json(conn, table: str, data: bytes) -> None:
+def _flatten_worldbank_rows(rows: list[dict]) -> list[dict]:
+    """World Bank API returns nested indicator/country objects — flatten for analysis."""
+    flat: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        indicator = row.get("indicator") if isinstance(row.get("indicator"), dict) else {}
+        country = row.get("country") if isinstance(row.get("country"), dict) else {}
+        value = row.get("value")
+        if isinstance(value, dict):
+            value = value.get("value")
+        flat.append(
+            {
+                "countryiso3code": row.get("countryiso3code") or country.get("id"),
+                "country": country.get("value") or country.get("id"),
+                "indicator_id": indicator.get("id"),
+                "indicator": indicator.get("value") or indicator.get("id"),
+                "date": row.get("date"),
+                "value": value,
+            }
+        )
+    return flat
+
+
+def _load_json(conn, table: str, data: bytes, portal: str = "") -> None:
     payload = json.loads(data.decode("utf-8", errors="replace"))
     rows: list[dict]
     if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
@@ -83,6 +111,8 @@ def _load_json(conn, table: str, data: bytes) -> None:
         rows = [payload]
     else:
         raise DownloadError("Unsupported JSON shape")
+    if portal == "world_bank" and rows and isinstance(rows[0], dict) and "indicator" in rows[0]:
+        rows = _flatten_worldbank_rows(rows)
     if not rows:
         conn.execute(f"CREATE OR REPLACE TABLE {table} (placeholder VARCHAR)")
         return
@@ -97,26 +127,6 @@ def _load_json(conn, table: str, data: bytes) -> None:
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-
-def _common_join_columns(profiles: list[dict]) -> list[str]:
-    if len(profiles) < 2:
-        return []
-    names_sets = []
-    for p in profiles:
-        names_sets.append({c["name"].lower(): c["name"] for c in p["columns"]})
-    shared = set(names_sets[0])
-    for ns in names_sets[1:]:
-        shared &= set(ns)
-    preferred = ["countryiso3code", "country", "state", "state_code", "year", "date", "id"]
-    ordered = []
-    for key in preferred:
-        if key in shared:
-            ordered.append(names_sets[0][key])
-    for key in sorted(shared):
-        canon = names_sets[0][key]
-        if canon not in ordered:
-            ordered.append(canon)
-    return ordered[:12]
 
 
 async def run_ingest(db: Session, session_id: str) -> None:
@@ -141,55 +151,96 @@ async def run_ingest(db: Session, session_id: str) -> None:
         conn = connect(session_id)
         profiles: list[dict] = []
 
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            for idx, resource in enumerate(resources):
-                pct = 10 + int(70 * (idx / max(len(resources), 1)))
-                _set_progress(
-                    db,
-                    session,
-                    phase="ingest",
-                    message=f"Downloading {resource.title[:60]}…",
-                    percent=pct,
-                )
-                data, kind = await fetch_resource_bytes(resource.resource_url, client=client)
-                raw_table = f"raw_{idx}"
-                _load_bytes(conn, raw_table, data, kind, resource.portal)
-                config = session.config or {}
-                filters = config.get("filters") or {}
-                filter_sql = filters.get(str(idx)) or filters.get(raw_table)
-                if filter_sql and not validate_filter(filter_sql):
-                    raise DownloadError("Invalid filter expression")
-                profile = _profile_table(conn, raw_table)
-                profile["resource_id"] = resource.id
-                profile["title"] = resource.title
-                profile["raw_table"] = raw_table
-                profiles.append(profile)
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
+                for idx, resource in enumerate(resources):
+                    pct = 10 + int(70 * (idx / max(len(resources), 1)))
+                    dataset_n = idx + 1
+                    total_n = len(resources)
+                    _set_progress(
+                        db,
+                        session,
+                        phase="ingest",
+                        message=(
+                            f"Downloading dataset {dataset_n} of {total_n}…"
+                            if total_n > 1
+                            else "Downloading dataset…"
+                        ),
+                        percent=pct,
+                    )
+                    data, kind = await fetch_resource_bytes(resource.resource_url, client=client)
+                    _set_progress(
+                        db,
+                        session,
+                        phase="ingest",
+                        message=(
+                            f"Processing dataset {dataset_n} of {total_n}…"
+                            if total_n > 1
+                            else "Processing dataset…"
+                        ),
+                        percent=min(pct + 5, 85),
+                    )
+                    raw_table = f"raw_{idx}"
+                    _load_bytes(conn, raw_table, data, kind, resource.portal)
+                    config = session.config or {}
+                    filters = config.get("filters") or {}
+                    filter_sql = filters.get(str(idx)) or filters.get(raw_table)
+                    if filter_sql and not validate_filter(filter_sql):
+                        raise DownloadError("Invalid filter expression")
+                    profile = _profile_table(conn, raw_table)
+                    profile["resource_id"] = resource.id
+                    profile["title"] = resource.title
+                    profile["raw_table"] = raw_table
+                    profiles.append(profile)
 
-        config = dict(session.config or {})
-        config.setdefault("ml_enabled", True)
-        config.setdefault("filters", {})
-        session.config = config
-        session.duckdb_path = str(session_db_path(session_id))
-        session.row_counts = {str(i): p["row_count"] for i, p in enumerate(profiles)}
-        session.preview = {
-            "datasets": profiles,
-            "suggested_join_keys": _common_join_columns(profiles),
-            "sampling_tier": sampling_tier(max(session.row_counts.values(), default=0)),
-        }
-        apply_session_config(db, session_id)
-        session = db.get(AnalysisSession, session_id)
-        if session:
+            config = dict(session.config or {})
+            config.setdefault("ml_enabled", True)
+            config.setdefault("filters", {})
+            session.config = config
+            session.duckdb_path = str(session_db_path(session_id))
+            session.row_counts = {str(i): p["row_count"] for i, p in enumerate(profiles)}
+            session.preview = {
+                "datasets": profiles,
+                "suggested_join_keys": [],
+                "sampling_tier": sampling_tier(max(session.row_counts.values(), default=0)),
+            }
+            db.add(session)
+            db.commit()
+
             _set_progress(
                 db,
                 session,
-                phase="ready",
-                message="Data loaded — review filters and sample size",
-                percent=100,
-                status="ready",
+                phase="ingest",
+                message="Applying row cap and sample…",
+                percent=92,
             )
-        conn.close()
+            apply_session_config(db, session_id)
+            session = db.get(AnalysisSession, session_id)
+            if session:
+                preview = dict(session.preview or {})
+                conn_keys = connect(session_id)
+                try:
+                    preview["suggested_join_keys"] = safe_join_columns(
+                        conn_keys, preview.get("datasets") or []
+                    )
+                finally:
+                    conn_keys.close()
+                session.preview = preview
+                db.add(session)
+                db.commit()
+                _set_progress(
+                    db,
+                    session,
+                    phase="ready",
+                    message="Data loaded — review filters and sample size",
+                    percent=100,
+                    status="ready",
+                )
+        finally:
+            conn.close()
     except Exception as exc:
         logger.exception("Ingest failed for %s", session_id)
+        db.rollback()
         session = db.get(AnalysisSession, session_id)
         if session:
             session.status = "failed"

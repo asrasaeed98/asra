@@ -8,7 +8,8 @@ from findings_api.catalog.sync_worldbank import sync_worldbank
 
 
 async def run_full_sync(session: Session) -> dict[str, int]:
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    # Avoid system HTTP proxies breaking local dev sync (common ProxyError 403).
+    async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
         dg_n = await sync_datagov(session, client)
         wb_n = await sync_worldbank(session, client)
     return {"data_gov": dg_n, "world_bank": wb_n}

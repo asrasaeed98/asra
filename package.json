@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "dev:web": "npm run dev --prefix apps/web",
-    "dev:api": "cd apps/api && uvicorn findings_api.main:app --reload --port 8000",
+    "dev:api": "cd apps/api && .venv/bin/uvicorn findings_api.main:app --reload --port 8000",
+    "sync:catalog": "curl -X POST http://localhost:8000/admin/sync",
     "build:web": "npm run build --prefix apps/web",
     "test:api": "cd apps/api && pytest"
   }

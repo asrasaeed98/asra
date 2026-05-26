@@ -1,19 +1,55 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func, select
 
 from findings_api import __version__
+from findings_api.catalog.sync_all import run_full_sync
 from findings_api.config import settings
-from findings_api.db import init_db
+from findings_api.db import get_session_factory, init_db
+from findings_api.models import CatalogResource
 from findings_api.routers import admin, datasets, health, search, sessions
+from findings_api.session_recovery import recover_stale_sessions
 
+logger = logging.getLogger(__name__)
 _display = settings.app_display_name
+
+
+async def _sync_catalog_if_empty() -> None:
+    """Local dev helper: populate search index when the DB has no datasets yet."""
+    if settings.admin_sync_token:
+        return
+
+    factory = get_session_factory()
+    db = factory()
+    try:
+        count = int(db.scalar(select(func.count()).select_from(CatalogResource)) or 0)
+        if count > 0:
+            return
+        logger.info("Catalog empty — syncing data.gov + World Bank (local dev)")
+        counts = await run_full_sync(db)
+        logger.info("Catalog sync complete: %s", counts)
+    except Exception:
+        logger.exception("Background catalog sync failed")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    factory = get_session_factory()
+    db = factory()
+    try:
+        n = recover_stale_sessions(db)
+        if n:
+            logger.warning("Marked %s stale session(s) as failed on startup", n)
+    finally:
+        db.close()
+    asyncio.create_task(_sync_catalog_if_empty())
     yield
 
 

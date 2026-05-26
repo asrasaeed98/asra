@@ -44,7 +44,7 @@ All files in `docs/findings-ai/`.
 
 ## Slice 7 — AI summary
 
-- [ ] Finalize: Anthropic Haiku/Sonnet summary from Finding JSON
+- [x] Finalize: Anthropic Haiku summary from top Finding JSON + digit validation + template fallback
 - [ ] Numeric validation + fallback template
 
 ## Slice 8 — Chat

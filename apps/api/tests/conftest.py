@@ -55,6 +55,8 @@ def client(monkeypatch):
             source_url="https://catalog.data.gov/dataset/example",
             resource_url="https://example.com/data.csv",
             search_text="unemployment by state economy bls",
+            ingestible=True,
+            detected_format="CSV",
         )
     )
     db.commit()

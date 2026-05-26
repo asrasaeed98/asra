@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { LoadingBlock } from "@/components/LoadingBlock";
+import { formatSeconds, LoadingBlock } from "@/components/LoadingBlock";
 import {
   createSession,
   getSession,
@@ -10,6 +11,7 @@ import {
   updateSession,
   runSessionAnalysis,
   type SessionDetail,
+  type SessionStatus,
 } from "@/lib/api";
 
 function tierHint(tier?: string) {
@@ -23,13 +25,15 @@ function ReviewContent() {
   const router = useRouter();
   const ids = (params.get("ids") ?? "").split(",").filter(Boolean);
   const [intent, setIntent] = useState("");
-  const [ml, setMl] = useState(true);
+  const [ml, setMl] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(params.get("session"));
   const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [ingestStatus, setIngestStatus] = useState<SessionStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [joinKeys, setJoinKeys] = useState<string[]>([]);
   const [starting, setStarting] = useState(false);
+  const [booting, setBooting] = useState(true);
 
   const refreshSession = useCallback(async (id: string) => {
     const d = await getSession(id);
@@ -40,11 +44,13 @@ function ReviewContent() {
       setJoinKeys([d.preview.suggested_join_keys[0]]);
   }, []);
 
+  // Create session once when arriving from search
   useEffect(() => {
     if (ids.length === 0) return;
     let cancelled = false;
 
     async function boot() {
+      setBooting(true);
       setLoadError(null);
       try {
         let sid = sessionId;
@@ -56,17 +62,10 @@ function ReviewContent() {
             router.replace(`/review?ids=${ids.join(",")}&session=${sid}`);
           }
         }
-        for (let i = 0; i < 120 && !cancelled; i++) {
-          const status = await getSessionStatus(sid!);
-          if (status.status === "ready") break;
-          if (status.status === "failed") {
-            throw new Error(status.message ?? "Ingest failed");
-          }
-          await new Promise((r) => setTimeout(r, 500));
-        }
-        if (!cancelled) await refreshSession(sid!);
       } catch (e) {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not load session");
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not start session");
+      } finally {
+        if (!cancelled) setBooting(false);
       }
     }
 
@@ -74,7 +73,37 @@ function ReviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [ids.join(","), sessionId, refreshSession, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once per ids
+  }, [ids.join(",")]);
+
+  // Poll ingest progress until ready or failed
+  useEffect(() => {
+    if (!sessionId || booting) return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const status = await getSessionStatus(sessionId!);
+        if (cancelled) return;
+        setIngestStatus(status);
+
+        if (status.status === "ready") {
+          await refreshSession(sessionId!);
+        } else if (status.status === "failed") {
+          setLoadError(status.message ?? "Ingest failed");
+        }
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not reach API");
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, 800);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId, booting, refreshSession]);
 
   async function applyConfig() {
     if (!sessionId) return;
@@ -99,6 +128,12 @@ function ReviewContent() {
       setStarting(false);
     }
   }
+
+  const isIngesting =
+    booting ||
+    !sessionId ||
+    ingestStatus?.status === "ingesting" ||
+    (detail?.status === "ingesting" && ingestStatus?.status !== "ready");
 
   if (ids.length === 0) {
     return (
@@ -125,10 +160,26 @@ function ReviewContent() {
     );
   }
 
-  if (!detail || detail.status === "ingesting") {
+  if (isIngesting || !detail) {
+    const message =
+      ingestStatus?.message ??
+      detail?.message ??
+      (booting ? "Starting…" : "Loading your data…");
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
-        <LoadingBlock message={detail?.message ?? "Loading your data…"} minHeight="min-h-[40vh]" />
+        <Link
+          href={`/search?ids=${ids.join(",")}`}
+          className="inline-block text-sm font-medium text-pink-600 hover:text-pink-700"
+        >
+          ← Back to search
+        </Link>
+        <h1 className="mb-6 mt-4 text-xl font-semibold text-stone-800">Loading datasets</h1>
+        <LoadingBlock
+          message={message}
+          percent={ingestStatus?.percent ?? detail?.percent}
+          timeHint={formatSeconds(ingestStatus?.estimate_remaining_sec)}
+          minHeight="min-h-[32vh]"
+        />
       </div>
     );
   }
@@ -144,11 +195,18 @@ function ReviewContent() {
   const datasets = detail.preview?.datasets ?? [];
   const suggested = detail.preview?.suggested_join_keys ?? [];
   const twoDatasets = datasets.length >= 2;
+  const backHref = `/search?ids=${ids.join(",")}`;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-semibold text-stone-800">Review & confirm</h1>
-      <p className="mt-1 text-sm text-stone-600">Estimated time: 2–4 minutes</p>
+      <Link
+        href={backHref}
+        className="inline-block text-sm font-medium text-pink-600 hover:text-pink-700"
+      >
+        ← Back to search
+      </Link>
+      <h1 className="mt-4 text-2xl font-semibold text-stone-800">Review & confirm</h1>
+      <p className="mt-1 text-sm text-stone-600">Estimated analysis time: 2–4 minutes</p>
       <p className="mt-2 text-xs text-stone-500">{tierHint(detail.preview?.sampling_tier)}</p>
 
       <ul className="mt-6 space-y-3">
@@ -162,23 +220,37 @@ function ReviewContent() {
               )}
             </p>
             {ds.columns && ds.columns.length > 0 && (
-              <p className="mt-2 text-xs text-stone-500">
-                Columns: {ds.columns.slice(0, 8).map((c) => c.name).join(", ")}
-                {ds.columns.length > 8 ? "…" : ""}
-              </p>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs font-medium text-pink-600 hover:text-pink-700">
+                  Columns ({ds.columns.length})
+                </summary>
+                <ul className="mt-2 space-y-1 text-xs text-stone-600">
+                  {ds.columns.map((col) => (
+                    <li key={col.name}>
+                      <span className="font-medium text-stone-800">{col.name}</span>
+                      {col.type && <span className="text-stone-500"> · {col.type}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
-            <label className="mt-3 block text-xs font-medium text-stone-600">
-              Filter (SQL WHERE clause, optional)
-              <input
-                value={filters[String(idx)] ?? ""}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, [String(idx)]: e.target.value }))
-                }
-                onBlur={applyConfig}
-                placeholder="e.g. state = 'CA'"
-                className="mt-1 w-full rounded-lg border border-[#ddd0c0] bg-white px-2 py-1.5 text-sm text-stone-800"
-              />
-            </label>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-medium text-pink-600 hover:text-pink-700">
+                Filter{filters[String(idx)]?.trim() ? " (active)" : ""}
+              </summary>
+              <label className="mt-2 block text-xs text-stone-500">
+                SQL WHERE clause (optional)
+                <input
+                  value={filters[String(idx)] ?? ""}
+                  onChange={(e) =>
+                    setFilters((f) => ({ ...f, [String(idx)]: e.target.value }))
+                  }
+                  onBlur={applyConfig}
+                  placeholder="e.g. state = 'CA'"
+                  className="mt-1 w-full rounded-lg border border-[#ddd0c0] bg-white px-2 py-1.5 text-sm text-stone-800"
+                />
+              </label>
+            </details>
           </li>
         ))}
       </ul>

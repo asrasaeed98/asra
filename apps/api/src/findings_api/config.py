@@ -1,10 +1,20 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_API_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _API_ROOT.parent.parent
+_DEFAULT_DB = _API_ROOT / "findings_local.db"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(_API_ROOT / ".env", _REPO_ROOT / ".env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
-    database_url: str = "sqlite:///./findings_local.db"
+    database_url: str = f"sqlite:///{_DEFAULT_DB}"
     redis_url: str = "redis://localhost:6379/0"
     anthropic_api_key: str = ""
     anthropic_model_summary: str = "claude-haiku-4-5"
@@ -19,8 +29,11 @@ class Settings(BaseSettings):
     ckan_sync_max_packages: int = 40
     ckan_sync_rows: int = 25
     wb_sync_max_indicators: int = 250
+    catalog_probe_enabled: bool = True
+    catalog_probe_max_bytes: int = 256_000
+    catalog_probe_timeout_sec: float = 20.0
     admin_sync_token: str = ""
-    app_display_name: str = "FunFinds"
+    app_display_name: str = "Findings"
     session_data_dir: str = "./session_data"
     max_download_bytes: int = 50_000_000
 

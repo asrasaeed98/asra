@@ -30,6 +30,10 @@ class CatalogResource(Base):
     resource_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     columns: Mapped[list | None] = mapped_column(JsonType, nullable=True)
     byte_size: Mapped[int | None] = mapped_column(nullable=True)
+    ingestible: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    ingest_block_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detected_format: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    probed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     search_text: Mapped[str] = mapped_column(Text, index=True)
     synced_at: Mapped[datetime] = mapped_column(

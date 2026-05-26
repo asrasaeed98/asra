@@ -38,7 +38,7 @@ def search(
     db: Session = Depends(get_db),
 ):
     query = q.strip().lower()
-    stmt = select(CatalogResource)
+    stmt = select(CatalogResource).where(CatalogResource.ingestible.is_(True))
     if portal:
         stmt = stmt.where(CatalogResource.portal == portal)
     if query:

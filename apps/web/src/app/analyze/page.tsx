@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FunFindsLoader } from "@/components/FunFindsLoader";
-import { LoadingBlock } from "@/components/LoadingBlock";
+import { formatSeconds, LoadingBlock } from "@/components/LoadingBlock";
 import { getSessionStatus, type SessionStatus } from "@/lib/api";
 
 const PHASES = [
@@ -15,6 +15,7 @@ const PHASES = [
 ];
 
 function phaseIndexFromStatus(status: SessionStatus): number {
+  if (status.status === "complete") return 4;
   const map: Record<string, number> = {
     ingest: 0,
     ready: 1,
@@ -56,7 +57,7 @@ function AnalyzeContent() {
           setError(s.message ?? "Analysis failed");
           return;
         }
-        if (s.phase === "finalize" || (s.status === "analyzing" && s.percent >= 100)) {
+        if (s.status === "complete" || s.phase === "finalize" || (s.status === "analyzing" && s.percent >= 100)) {
           setTimeout(() => router.push(`/results?session=${sessionId}`), 800);
         }
       } catch (e) {
@@ -96,7 +97,7 @@ function AnalyzeContent() {
 
   const timeHint =
     status?.estimate_remaining_sec != null
-      ? `About ${Math.ceil(status.estimate_remaining_sec / 60)} min left`
+      ? formatSeconds(status.estimate_remaining_sec)
       : "Usually 2–4 minutes";
 
   return (
@@ -106,8 +107,16 @@ function AnalyzeContent() {
       </div>
       <h1 className="text-center text-xl font-semibold text-stone-800">Analysis in progress</h1>
       <p className="mt-1 text-center text-sm text-stone-500">{timeHint}</p>
-      {status?.percent != null && status.percent > 0 && (
-        <p className="mt-2 text-center text-xs text-stone-400">{status.percent}%</p>
+      {status?.percent != null && status.percent >= 0 && (
+        <div className="mx-auto mt-4 w-full max-w-xs">
+          <div className="h-2 overflow-hidden rounded-full bg-[#e8ddd0]">
+            <div
+              className="h-full rounded-full bg-pink-500 transition-all duration-500"
+              style={{ width: `${Math.min(100, status.percent)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-center text-xs text-stone-400">{status.percent}% complete</p>
+        </div>
       )}
       <ol className="mt-8 space-y-3 rounded-xl border border-[#e8ddd0] bg-white p-4">
         {PHASES.map((p, i) => (
@@ -130,7 +139,7 @@ function AnalyzeContent() {
         ))}
       </ol>
       <p className="mt-6 text-center text-xs text-stone-400">
-        Ingest is live; full analysis engine ships in slice 4–5.
+        Statistical tests run automatically; a plain-language summary is generated when results are ready.
       </p>
     </div>
   );

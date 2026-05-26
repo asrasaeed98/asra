@@ -3,17 +3,44 @@ import { FunFindsLoader } from "./FunFindsLoader";
 type LoadingBlockProps = {
   message?: string;
   minHeight?: string;
+  percent?: number;
+  timeHint?: string;
 };
 
 export function LoadingBlock({
   message = "Loading…",
   minHeight = "min-h-[200px]",
+  percent,
+  timeHint,
 }: LoadingBlockProps) {
+  const showBar = percent != null && percent >= 0;
+
   return (
     <div
-      className={`flex ${minHeight} items-center justify-center rounded-2xl border border-[#e8ddd0] bg-[#faf8f5]/90 backdrop-blur-sm`}
+      className={`flex ${minHeight} flex-col items-center justify-center rounded-2xl border border-[#e8ddd0] bg-[#faf8f5]/90 px-6 py-8 backdrop-blur-sm`}
     >
       <FunFindsLoader message={message} size="md" />
+      {showBar && (
+        <div className="mt-6 w-full max-w-xs">
+          <div className="h-2 overflow-hidden rounded-full bg-[#e8ddd0]">
+            <div
+              className="h-full rounded-full bg-pink-500 transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+            />
+          </div>
+          <p className="mt-2 text-center text-xs text-stone-500">{percent}% complete</p>
+        </div>
+      )}
+      {timeHint && <p className="mt-2 text-center text-xs text-stone-400">{timeHint}</p>}
     </div>
   );
 }
+
+function formatSeconds(sec?: number | null): string | undefined {
+  if (sec == null || sec <= 0) return undefined;
+  if (sec < 60) return `About ${sec} sec left`;
+  const mins = Math.ceil(sec / 60);
+  return mins === 1 ? "About 1 min left" : `About ${mins} min left`;
+}
+
+export { formatSeconds };

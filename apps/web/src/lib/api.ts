@@ -27,6 +27,53 @@ export type SearchResponse = {
   message?: string;
 };
 
+export type Finding = {
+  id: string;
+  type: string;
+  title: string;
+  columns: string[];
+  value: number | null;
+  p_value: number | null;
+  n: number;
+  method: string;
+  caveat: string;
+  sql: string;
+  datasets: string[];
+  details?: Record<string, unknown>;
+};
+
+export type SessionResults = {
+  session_id: string;
+  status: string;
+  findings: Finding[];
+  display_finding_ids?: string[];
+  column_glossary?: Array<{ name: string; label: string; description?: string | null }>;
+  charts: Array<{ id: string; finding_id: string; type: string; title: string; spec: Record<string, unknown> }>;
+  join_report?: Record<string, unknown> | null;
+  analysis_report?: {
+    tests_planned: number;
+    statistical_findings: number;
+    display_limit?: number;
+    display_count?: number;
+    total_findings: number;
+    datasets: Array<{
+      title: string;
+      n_rows: number;
+      numeric_columns: string[];
+      categorical_columns: string[];
+      datetime_columns: string[];
+    }>;
+    notes: string[];
+  };
+  ai_summary: string | null;
+  ai_summary_blocks?: Array<
+    | { type: "paragraph"; text: string }
+    | { type: "list"; items: string[] }
+  > | null;
+  ai_summary_source?: "anthropic" | "template" | "unavailable" | string | null;
+  message?: string;
+};
+
 export type SessionResponse = {
   id: string;
   status: string;
@@ -74,10 +121,24 @@ export type SessionDetail = {
   catalogs: CatalogResult[];
 };
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
-  return res.json() as Promise<T>;
+export async function apiGet<T>(path: string, timeoutMs = 30_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
+    return res.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Request timed out — the API may be busy. Try again in a moment.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
@@ -143,6 +204,10 @@ export function runSessionAnalysis(sessionId: string) {
   return apiPost<{ session_id: string; status: string; phase: string }>(
     `/sessions/${sessionId}/run`,
   );
+}
+
+export function getSessionResults(sessionId: string) {
+  return apiGet<SessionResults>(`/sessions/${sessionId}/results`);
 }
 
 export async function triggerCatalogSync(): Promise<{

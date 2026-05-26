@@ -19,7 +19,7 @@ async def fetch_resource_bytes(url: str, *, client: httpx.AsyncClient | None = N
     """Return body and a coarse content kind: csv | json | unknown."""
     owns_client = client is None
     if owns_client:
-        client = httpx.AsyncClient(follow_redirects=True)
+        client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
     try:
         resp = await client.get(url, timeout=120.0)
         resp.raise_for_status()

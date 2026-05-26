@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy.orm import Session
 
+from findings_api.catalog.quality import apply_probe
+from findings_api.catalog.probe import ProbeResult
 from findings_api.config import settings
 from findings_api.licensing import (
     attribution_required,
@@ -78,7 +80,7 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
                 description=desc or None,
                 organization=org,
                 tags=tags,
-                format="API",
+                format="JSON_WORLDBANK",
                 license_normalized=LICENSE_NORM,
                 license_raw="CC-BY-4.0 (World Bank Terms of Use)",
                 license_display="CC BY 4.0 — attribution required",
@@ -87,10 +89,24 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
                 publisher=publisher,
                 source_url=source_url,
                 resource_url=resource_url,
-                columns=None,
+                columns=[
+                    {"name": "countryiso3code"},
+                    {"name": "country"},
+                    {"name": "indicator_id"},
+                    {"name": "indicator"},
+                    {"name": "date"},
+                    {"name": "value"},
+                ],
                 byte_size=None,
                 updated_at=datetime.now(timezone.utc),
                 search_text=_build_search_text(name, desc, org, tags),
+                ingestible=True,
+                detected_format="JSON_WORLDBANK",
+                ingest_block_reason=None,
+            )
+            apply_probe(
+                rec,
+                ProbeResult(True, "World Bank API (normalized on ingest)", "JSON_WORLDBANK"),
             )
             session.merge(rec)
             count += 1

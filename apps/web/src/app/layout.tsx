@@ -28,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased text-stone-700`}
+        className={`${geistSans.variable} ${geistMono.variable} flex min-h-screen flex-col antialiased text-stone-700`}
       >
         <header className="border-b border-[#e8ddd0] bg-[#fffcf8]/95 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
@@ -36,14 +36,20 @@ export default function RootLayout({
               {APP_NAME}
               <span className="text-pink-500">.</span>
             </Link>
-            <nav className="flex gap-4 text-sm text-stone-600">
-              <Link href="/search" className="hover:text-pink-600">
-                Search
-              </Link>
-            </nav>
+            <Link
+              href="/"
+              className="text-sm font-medium text-stone-600 transition-colors hover:text-pink-600"
+            >
+              Home
+            </Link>
           </div>
         </header>
-        <main>{children}</main>
+        <main className="flex-1">{children}</main>
+        <footer className="border-t border-[#e8ddd0] bg-[#fffcf8]/80">
+          <div className="mx-auto max-w-5xl px-4 py-4 text-center text-xs text-stone-400">
+            Phase 1 prototype
+          </div>
+        </footer>
       </body>
     </html>
   );
