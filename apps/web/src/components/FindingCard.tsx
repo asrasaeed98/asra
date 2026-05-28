@@ -66,6 +66,7 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
   const technicalTitle = detailStr(finding, "technical_title");
   const confidence = confidenceLabel(finding.p_value);
   const isStatistical = finding.type !== "descriptive" && finding.p_value != null;
+  const measureDisclosure = detailStr(finding, "measure_disclosure");
 
   return (
     <article className="rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
@@ -83,6 +84,12 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
             <AnalysisTypeLabel type={finding.type} />
           </p>
           <h3 className="mt-1 text-sm font-semibold leading-snug text-stone-800">{headline}</h3>
+
+          {measureDisclosure && (
+            <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-2.5 py-2 text-xs leading-relaxed text-violet-900">
+              {measureDisclosure}
+            </p>
+          )}
 
           {impact && (
             <p className="mt-2 text-sm leading-relaxed text-stone-700">{impact}</p>

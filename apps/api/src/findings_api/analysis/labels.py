@@ -100,6 +100,22 @@ def column_label(name: str) -> str:
     return humanize_column(name)
 
 
+def measure_label(
+    col: str,
+    *,
+    dataset_title: str = "",
+    measure_context: dict[str, str | None] | None = None,
+) -> str:
+    """Human label for a numeric measure column (prefers in-table indicator metadata)."""
+    from findings_api.analysis.measure_semantics import measure_label_from_context
+
+    return measure_label_from_context(
+        col,
+        catalog_title=dataset_title,
+        measure_context=measure_context,
+    )
+
+
 def column_description(name: str) -> str | None:
     entry = _COLUMN_DICTIONARY.get(_normalize_key(name))
     return entry.get("description") if entry else None
@@ -113,13 +129,28 @@ def column_entry(name: str) -> dict[str, str | None]:
     }
 
 
-def glossary_for_columns(names: list[str]) -> list[dict[str, str | None]]:
+def glossary_for_columns(
+    names: list[str],
+    *,
+    measure_contexts: dict[str, dict[str, str | None]] | None = None,
+) -> list[dict[str, str | None]]:
     seen: set[str] = set()
     out: list[dict[str, str | None]] = []
+    contexts = measure_contexts or {}
     for name in names:
         key = _normalize_key(name)
         if key in seen:
             continue
         seen.add(key)
-        out.append(column_entry(name))
+        if name in contexts and contexts[name].get("label"):
+            ctx = contexts[name]
+            out.append(
+                {
+                    "name": name,
+                    "label": str(ctx["label"]),
+                    "description": ctx.get("disclosure") or ctx.get("description"),
+                }
+            )
+        else:
+            out.append(column_entry(name))
     return out

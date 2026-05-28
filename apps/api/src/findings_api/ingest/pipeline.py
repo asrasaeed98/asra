@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 from sqlalchemy.orm import Session
 
-from findings_api.analysis.join import safe_join_columns
+from findings_api.analysis.join import suggest_joins
 from findings_api.analysis.labels import column_entry
 from findings_api.catalog.validate import validate_table
 from findings_api.config import settings
@@ -265,6 +265,7 @@ async def run_ingest(db: Session, session_id: str) -> None:
             session.preview = {
                 "datasets": profiles,
                 "suggested_join_keys": [],
+                "join_suggestions": [],
                 "sampling_tier": sampling_tier(max(session.row_counts.values(), default=0)),
             }
             db.add(session)
@@ -283,9 +284,11 @@ async def run_ingest(db: Session, session_id: str) -> None:
                 preview = dict(session.preview or {})
                 conn_keys = connect(session_id)
                 try:
-                    preview["suggested_join_keys"] = safe_join_columns(
-                        conn_keys, preview.get("datasets") or []
-                    )
+                    suggestions = suggest_joins(conn_keys, preview.get("datasets") or [])
+                    preview["join_suggestions"] = [s.to_dict() for s in suggestions]
+                    preview["suggested_join_keys"] = [
+                        s.label for s in suggestions if s.ok
+                    ][:12]
                 finally:
                     conn_keys.close()
                 session.preview = preview

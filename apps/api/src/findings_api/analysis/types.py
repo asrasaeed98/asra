@@ -20,6 +20,10 @@ class TableProfile:
     title: str
     n_rows: int
     columns: list[ColumnProfile] = field(default_factory=list)
+    measure_contexts: dict[str, dict[str, str | None]] = field(default_factory=dict)
+
+    def measure_context(self, column: str) -> dict[str, str | None] | None:
+        return self.measure_contexts.get(column)
 
     @property
     def numeric(self) -> list[str]:

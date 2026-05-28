@@ -40,6 +40,7 @@ class SessionConfigUpdate(BaseModel):
     ml_enabled: bool | None = None
     filters: dict[str, str] | None = None
     join_keys: list[str] | None = None
+    join_on: list[dict[str, str]] | None = None
 
 
 class CreateSessionRequest(BaseModel):

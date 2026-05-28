@@ -4,20 +4,20 @@ import { APP_NAME } from "@/lib/app-name";
 const VALUE_PROPS = [
   {
     step: 1,
+    title: "Search real licensed datasets",
+    description:
+      "Browse vetted public catalogs with license labels and ingestible file checks.",
+  },
+  {
+    step: 2,
     title: "Select up to 2 datasets",
     description: "Choose one or two public tables for each analysis.",
   },
   {
-    step: 2,
+    step: 3,
     title: "Run analysis, get ranked results",
     description:
       "We compute the statistics first, then rank the strongest patterns. AI summaries explain what the numbers mean, grounded in your results and never inventing figures.",
-  },
-  {
-    step: 3,
-    title: "Search real licensed datasets",
-    description:
-      "Browse vetted public catalogs with license labels and ingestible file checks.",
   },
 ] as const;
 

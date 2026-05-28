@@ -5,8 +5,8 @@ from __future__ import annotations
 from findings_api.analysis.labels import column_label
 from findings_api.analysis.types import Finding
 
-# Exploratory ML outputs are not actionable for most users yet.
-EXCLUDE_FROM_RANKING = frozenset({"kmeans_cluster", "anomaly_top_rows"})
+# Legacy alias — ML findings are ranked alongside statistical tests when quality gates pass.
+EXCLUDE_FROM_RANKING = frozenset()
 
 
 def _fmt_number(value: float) -> str:
@@ -42,6 +42,12 @@ def headline_for(finding: Finding) -> str:
     if finding.type == "chi_square" and len(cols) >= 2:
         return f"{column_label(cols[0])} and {column_label(cols[1])} appear linked"
     if finding.type == "descriptive":
+        return finding.title
+    if finding.type in ("kmeans_cluster", "dbscan_cluster"):
+        return finding.title
+    if finding.type in ("anomaly_top_rows", "lof_anomaly"):
+        return finding.title
+    if finding.type == "pca_structure":
         return finding.title
     return finding.title.split("(")[0].strip()
 
@@ -89,6 +95,15 @@ def impact_for(finding: Finding) -> str | None:
         if finding.details.get("median") is not None:
             return "Typical values and spread for a key numeric column."
         return "Summary of the size and shape of the loaded data."
+
+    if finding.type == "kmeans_cluster":
+        return "Rows group into clusters with similar numeric profiles."
+    if finding.type == "dbscan_cluster":
+        return "Dense regions in numeric space form natural groupings."
+    if finding.type in ("anomaly_top_rows", "lof_anomaly"):
+        return "A small set of rows looks unlike the rest on numeric fields."
+    if finding.type == "pca_structure":
+        return "Much of the numeric variation can be summarized by a single combined axis."
 
     return None
 

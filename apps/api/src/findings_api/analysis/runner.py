@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
 from findings_api.analysis.ai_summary import generate_ai_summary
 from findings_api.analysis.charts import charts_for_findings
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
-from findings_api.analysis.join import assess_join, build_joined_table
-from findings_api.analysis.ml.clustering import run_anomaly, run_clustering
+from findings_api.analysis.join import (
+    assess_join_on,
+    build_joined_table_on,
+    normalize_join_on,
+)
+from findings_api.analysis.ml.clustering import run_ml_suite
 from findings_api.analysis.profile import profile_table
 from findings_api.analysis.labels import glossary_for_columns
-from findings_api.analysis.narrative import EXCLUDE_FROM_RANKING, enrich_findings
+from findings_api.analysis.narrative import enrich_findings
 from findings_api.analysis.ranker import DISPLAY_TOP, rank_findings, select_display_findings
 from findings_api.analysis.selector import plans_for_table
 from findings_api.analysis.tests.chi_square import run_chi_square
@@ -45,6 +50,8 @@ def _set_progress(
 
 
 def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
+    extra = plan.extra or {}
+    measure_context = extra.get("measure_context")
     if plan.kind == "correlation":
         return run_correlation(
             conn,
@@ -64,6 +71,7 @@ def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
             resource_id=plan.resource_id,
             dataset_title=plan.title,
             finding_offset=finding_offset,
+            measure_context=measure_context,
         )
     if plan.kind == "chi_square" and len(plan.columns) == 2:
         return run_chi_square(
@@ -85,6 +93,8 @@ def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
             resource_id=plan.resource_id,
             dataset_title=plan.title,
             finding_offset=finding_offset,
+            aggregate_by_time=bool(extra.get("aggregate_by_time")),
+            measure_context=measure_context,
         )
     return []
 
@@ -111,6 +121,8 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         config = session.config or {}
         ml_enabled = bool(config.get("ml_enabled", True))
         join_keys = config.get("join_keys") or []
+        join_on = config.get("join_on") or []
+        join_pairs = normalize_join_on(join_keys=join_keys, join_on=join_on)
 
         _set_progress(db, session, phase="prepare", message="Preparing analysis tables", percent=15)
         conn = connect(session_id)
@@ -131,21 +143,32 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         table_meta = {table: (rid, title) for table, rid, title in tables}
         target_table = tables[0][0]
         join_report = None
-        if len(tables) == 2 and join_keys:
+        if len(tables) == 2 and join_pairs:
             _set_progress(db, session, phase="join", message="Combining datasets", percent=30)
-            join_key = join_keys[0]
-            ok, matched, warning = assess_join(conn, tables[0][0], tables[1][0], join_key)
+            left_t, right_t = tables[0][0], tables[1][0]
+            ok, matched, warning, overlap_left, overlap_right = assess_join_on(
+                conn, left_t, right_t, join_pairs
+            )
             if ok:
-                build_joined_table(conn, tables[0][0], tables[1][0], join_key)
+                build_joined_table_on(conn, left_t, right_t, join_pairs)
                 target_table = "analysis_joined"
                 rid_a, title_a = table_meta[tables[0][0]]
                 rid_b, title_b = table_meta[tables[1][0]]
                 table_meta["analysis_joined"] = (f"{rid_a}+{rid_b}", f"{title_a} + {title_b}")
-                join_report = {"join_key": join_key, "matched_rows": matched}
+                join_report = {
+                    "join_on": [{"left": l, "right": r} for l, r in join_pairs],
+                    "join_key": join_pairs[0][0] if len(join_pairs) == 1 else None,
+                    "matched_rows": matched,
+                    "overlap_left_pct": round(overlap_left, 4),
+                    "overlap_right_pct": round(overlap_right, 4),
+                }
             else:
                 join_report = {
-                    "join_key": join_key,
+                    "join_on": [{"left": l, "right": r} for l, r in join_pairs],
+                    "join_key": join_pairs[0][0] if len(join_pairs) == 1 else None,
                     "matched_rows": matched,
+                    "overlap_left_pct": round(overlap_left, 4),
+                    "overlap_right_pct": round(overlap_right, 4),
                     "warning": warning,
                 }
 
@@ -160,48 +183,61 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             rid, title = table_meta.get(table, ("", "Dataset"))
             profiles.append(profile_table(conn, table, resource_id=rid, title=title))
 
-        _set_progress(db, session, phase="analyze", message="Running statistical tests", percent=55)
+        _set_progress(db, session, phase="analyze", message="Running statistical tests", percent=50)
         findings: list[Finding] = []
         tests_planned = 0
         offset = 0
         for profile in profiles:
             plans = plans_for_table(profile)
+            primary_plans = [
+                p for p in plans if (p.extra or {}).get("tier") != "derived"
+            ]
+            derived_plans = [
+                p for p in plans if (p.extra or {}).get("tier") == "derived"
+            ]
             tests_planned += len(plans)
-            for plan in plans:
+
+            for plan in primary_plans:
+                extra = dict(plan.extra or {})
+                if plan.columns:
+                    ctx = profile.measure_context(plan.columns[0])
+                    if ctx:
+                        extra["measure_context"] = ctx
+                        plan = replace(plan, extra=extra)
                 findings.extend(_execute_plan(conn, plan, offset))
                 offset = len(findings)
 
+            if derived_plans:
+                _set_progress(
+                    db,
+                    session,
+                    phase="analyze",
+                    message="Running derived summaries (e.g. year averages)",
+                    percent=62,
+                )
+                for plan in derived_plans:
+                    extra = dict(plan.extra or {})
+                    if plan.columns:
+                        ctx = profile.measure_context(plan.columns[0])
+                        if ctx:
+                            extra["measure_context"] = ctx
+                            plan = replace(plan, extra=extra)
+                    findings.extend(_execute_plan(conn, plan, offset))
+                    offset = len(findings)
+
             if ml_enabled:
-                ml_n = profile.n_rows
-                findings.extend(
-                    run_clustering(
-                        conn,
-                        profile.table,
-                        profile.numeric,
-                        resource_id=profile.resource_id,
-                        dataset_title=profile.title,
-                        n_rows=ml_n,
-                        finding_offset=offset,
-                    )
+                _set_progress(
+                    db,
+                    session,
+                    phase="analyze",
+                    message="Running ML models",
+                    percent=72,
                 )
-                offset = len(findings)
-                findings.extend(
-                    run_anomaly(
-                        conn,
-                        profile.table,
-                        profile.numeric,
-                        resource_id=profile.resource_id,
-                        dataset_title=profile.title,
-                        n_rows=ml_n,
-                        finding_offset=offset,
-                    )
-                )
+                findings.extend(run_ml_suite(conn, profile, finding_offset=offset))
                 offset = len(findings)
 
-        statistical = [
-            f for f in findings if f.type != "descriptive" and f.type not in EXCLUDE_FROM_RANKING
-        ]
-        ranked_all = enrich_findings(rank_findings(statistical))
+        ranked_candidates = [f for f in findings if f.type != "descriptive"]
+        ranked_all = enrich_findings(rank_findings(ranked_candidates))
         display = select_display_findings(ranked_all, DISPLAY_TOP)
         if not ranked_all:
             desc_offset = 0
@@ -211,7 +247,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             ranked_all = enrich_findings(rank_findings(ranked_all))
             display = select_display_findings(ranked_all, min(DISPLAY_TOP, len(ranked_all)))
 
-        charts = charts_for_findings(display)
+        charts = charts_for_findings(conn, display)
         statistical_hits = len([f for f in ranked_all if f.type != "descriptive"])
         notes = analysis_notes(
             profiles,
@@ -221,7 +257,12 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         )
 
         column_glossary = glossary_for_columns(
-            [c.name for p in profiles for c in p.columns]
+            [c.name for p in profiles for c in p.columns],
+            measure_contexts={
+                col: ctx
+                for p in profiles
+                for col, ctx in p.measure_contexts.items()
+            },
         )
 
         _set_progress(db, session, phase="finalize", message="Writing summary", percent=92)
@@ -232,6 +273,13 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             user_intent=session.user_intent,
             dataset_titles=dataset_titles,
         )
+
+        measure_notes = [
+            ctx
+            for p in profiles
+            for ctx in p.measure_contexts.values()
+            if ctx.get("disclosure")
+        ]
 
         _set_progress(db, session, phase="finalize", message="Building results", percent=96)
         preview["results"] = {
@@ -261,6 +309,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     for p in profiles
                 ],
                 "notes": notes,
+                "measure_notes": measure_notes,
             },
         }
         session.preview = preview

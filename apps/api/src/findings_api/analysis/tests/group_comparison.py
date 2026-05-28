@@ -5,7 +5,8 @@ import math
 import pandas as pd
 from scipy import stats
 
-from findings_api.analysis.labels import column_label
+from findings_api.analysis.labels import column_label, measure_label
+from findings_api.analysis.measure_semantics import append_measure_note, format_measure_disclosure
 from findings_api.analysis.profile import read_table_frame, sql_ident
 from findings_api.analysis.types import Finding
 
@@ -29,6 +30,7 @@ def run_group_comparison(
     resource_id: str,
     dataset_title: str,
     finding_offset: int,
+    measure_context: dict[str, str | None] | None = None,
 ) -> list[Finding]:
     df = read_table_frame(conn, table)
     if numeric_col not in df.columns or group_col not in df.columns:
@@ -74,13 +76,16 @@ def run_group_comparison(
         Finding(
             id=f"f_{idx}",
             type="group_comparison",
-            title=f"{column_label(numeric_col)} differs across {column_label(group_col)}",
+            title=f"{measure_label(numeric_col, dataset_title=dataset_title, measure_context=measure_context)} differs across {column_label(group_col)}",
             columns=[numeric_col, group_col],
             value=round(float(effect), 4),
             p_value=round(float(p), 6),
             n=len(work),
             method=method,
-            caveat="group differences may reflect confounding",
+            caveat=append_measure_note(
+                "group differences may reflect confounding",
+                measure_context,
+            ),
             sql=(
                 f"SELECT {sql_ident(group_col)}, AVG({sql_ident(numeric_col)}) AS mean_value "
                 f"FROM {table} GROUP BY 1 ORDER BY 2 DESC"
@@ -89,6 +94,12 @@ def run_group_comparison(
             score=_score(float(effect), float(p)),
             details={
                 "dataset_title": dataset_title,
+                "measure_context": measure_context,
+                "measure_disclosure": (
+                    format_measure_disclosure(measure_context)
+                    if measure_context
+                    else None
+                ),
                 "group_means": means,
                 "highest_group": top,
                 "lowest_group": bottom,

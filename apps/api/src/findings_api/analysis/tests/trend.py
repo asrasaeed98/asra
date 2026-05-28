@@ -5,7 +5,8 @@ import math
 import pandas as pd
 from scipy import stats
 
-from findings_api.analysis.labels import column_label
+from findings_api.analysis.labels import measure_label
+from findings_api.analysis.measure_semantics import append_measure_note, format_measure_disclosure
 from findings_api.analysis.profile import read_table_frame, sql_ident
 from findings_api.analysis.types import Finding
 
@@ -18,6 +19,19 @@ def _score(slope: float, p_value: float | None) -> float:
     return abs(slope) * min(20.0, -math.log10(p_value))
 
 
+def _aggregate_by_time(work: pd.DataFrame, value_col: str, time_col: str) -> pd.DataFrame:
+    """Collapse panel rows to one value per timestamp (global average)."""
+    if work[time_col].nunique() >= len(work) * 0.9:
+        return work
+    grouped = (
+        work.groupby(time_col, observed=True)[value_col]
+        .mean()
+        .reset_index()
+        .rename(columns={value_col: value_col})
+    )
+    return grouped[[time_col, value_col]]
+
+
 def run_trend(
     conn,
     table: str,
@@ -27,6 +41,8 @@ def run_trend(
     resource_id: str,
     dataset_title: str,
     finding_offset: int,
+    aggregate_by_time: bool = False,
+    measure_context: dict[str, str | None] | None = None,
 ) -> list[Finding]:
     df = read_table_frame(conn, table)
     if value_col not in df.columns or time_col not in df.columns:
@@ -41,10 +57,18 @@ def run_trend(
     if len(work) < 12:
         return []
 
+    if aggregate_by_time or work[time_col].nunique() < len(work):
+        work = _aggregate_by_time(work, value_col, time_col)
+        aggregated = True
+    else:
+        aggregated = False
+    if len(work) < 8:
+        return []
+
     x = work[time_col].astype("int64") / 1e9
     y = pd.to_numeric(work[value_col], errors="coerce")
     work = pd.DataFrame({"x": x, "y": y}).dropna()
-    if len(work) < 12 or work["y"].nunique() < 2:
+    if len(work) < 8 or work["y"].nunique() < 2:
         return []
 
     slope, _, r, p, _ = stats.linregress(work["x"], work["y"])
@@ -53,23 +77,43 @@ def run_trend(
 
     idx = finding_offset + 1
     direction = "upward" if slope > 0 else "downward"
+    measure = measure_label(value_col, dataset_title=dataset_title, measure_context=measure_context)
+    agg_sql = (
+        f"SELECT {sql_ident(time_col)}, AVG({sql_ident(value_col)}) AS {sql_ident(value_col)} "
+        f"FROM {table} WHERE {sql_ident(value_col)} IS NOT NULL "
+        f"GROUP BY 1 ORDER BY 1"
+    )
+    raw_sql = (
+        f"SELECT {sql_ident(time_col)}, {sql_ident(value_col)} FROM {table} "
+        f"WHERE {sql_ident(value_col)} IS NOT NULL ORDER BY 1"
+    )
     return [
         Finding(
             id=f"f_{idx}",
             type="time_trend",
-            title=f"{column_label(value_col)} shows an {direction} trend over time",
+            title=f"{measure} shows an {direction} trend over time",
             columns=[value_col, time_col],
             value=round(float(r), 4),
             p_value=round(float(p), 6),
             n=len(work),
             method="linear_trend",
-            caveat="trends may reflect seasonality or missing confounders",
-            sql=(
-                f"SELECT {sql_ident(time_col)}, {sql_ident(value_col)} FROM {table} "
-                f"WHERE {sql_ident(value_col)} IS NOT NULL ORDER BY 1"
+            caveat=append_measure_note(
+                "trend uses global average by year across countries when data is panel-shaped",
+                measure_context,
             ),
+            sql=agg_sql if aggregated else raw_sql,
             datasets=[resource_id],
             score=_score(float(slope), float(p)),
-            details={"dataset_title": dataset_title, "direction": direction},
+            details={
+                "dataset_title": dataset_title,
+                "direction": direction,
+                "aggregated": aggregated,
+                "measure_context": measure_context,
+                "measure_disclosure": (
+                    format_measure_disclosure(measure_context)
+                    if measure_context
+                    else None
+                ),
+            },
         )
     ]

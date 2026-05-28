@@ -6,6 +6,12 @@ export const FINDING_TYPE_LABELS: Record<string, string> = {
   chi_square: "Category link",
   time_trend: "Change over time",
   descriptive: "Data summary",
+  kmeans_cluster: "Clusters",
+  dbscan_cluster: "Density clusters",
+  pca_structure: "Numeric structure",
+  anomaly_top_rows: "Unusual rows",
+  lof_anomaly: "Local outliers",
+  // legacy aliases
   kmeans_clusters: "Clusters",
   isolation_forest: "Unusual rows",
 };
@@ -27,10 +33,18 @@ export function findingTypeDescription(type: string): string | null {
       return "Tests whether two category fields are linked — some combinations show up more often than you'd expect by chance.";
     case "descriptive":
       return "Summarizes the dataset without a significance test — useful context when no strong pattern was found.";
+    case "kmeans_cluster":
     case "kmeans_clusters":
       return "Groups similar rows together based on their numeric values.";
+    case "dbscan_cluster":
+      return "Finds dense groups in numeric space without fixing the number of clusters upfront.";
+    case "pca_structure":
+      return "Shows how much of the numeric variation can be captured by a single combined measure.";
+    case "anomaly_top_rows":
     case "isolation_forest":
       return "Flags rows that look unusual compared with the rest of the dataset.";
+    case "lof_anomaly":
+      return "Flags rows that are unusual compared with their nearest neighbors.";
     default:
       return null;
   }

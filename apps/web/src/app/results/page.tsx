@@ -6,6 +6,7 @@ import Link from "next/link";
 import { DatasetDetailsPanel, FindingCard, MetricsGuide } from "@/components/FindingCard";
 import { KeyFindingsContent } from "@/components/KeyFindingsContent";
 import { LoadingBlock } from "@/components/LoadingBlock";
+import { VegaChart } from "@/components/VegaChart";
 import { getSessionResults, type Finding, type SessionResults } from "@/lib/api";
 import { formatSummaryBlocks } from "@/lib/summary-format";
 
@@ -163,6 +164,23 @@ function ResultsContent() {
             What was loaded, which fields were eligible for tests, and how many results were found.
           </p>
           <DatasetDetailsPanel datasets={report.datasets} glossary={data.column_glossary ?? []} />
+          {report.measure_notes && report.measure_notes.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {report.measure_notes.map((note) => (
+                <li
+                  key={`${note.column}-${note.label}`}
+                  className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs leading-relaxed text-violet-900"
+                >
+                  {note.disclosure}
+                  {note.source === "ai_inferred" && (
+                    <span className="ml-2 rounded-full bg-violet-200/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-800">
+                      AI-inferred
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           {report.notes.length > 0 && (
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-relaxed text-stone-600">
               {report.notes.map((note) => (
@@ -236,11 +254,27 @@ function ResultsContent() {
       </section>
 
       {data.charts.length > 0 && (
-        <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5">
+        <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-stone-800">Charts</h2>
-          <p className="mt-2 text-xs text-stone-500">
-            {data.charts.length} chart spec(s) ready — interactive Vega-Lite rendering ships in slice 6.
+          <p className="mt-1 text-xs text-stone-500">
+            Visual summaries linked to key findings ({data.charts.length} chart
+            {data.charts.length === 1 ? "" : "s"}).
           </p>
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            {data.charts.map((chart) => (
+              <article
+                key={chart.id}
+                id={`chart-${chart.finding_id}`}
+                className="rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4"
+              >
+                <h3 className="text-sm font-medium text-stone-800">{chart.title}</h3>
+                <p className="mt-0.5 text-xs capitalize text-stone-500">{chart.type} chart</p>
+                <div className="mt-3">
+                  <VegaChart spec={chart.spec} title={chart.title} />
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       )}
 

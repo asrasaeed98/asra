@@ -113,6 +113,10 @@ def update_session(
         config["filters"] = body.filters
     if body.join_keys is not None:
         config["join_keys"] = body.join_keys
+    if body.join_on is not None:
+        config["join_on"] = body.join_on
+        if body.join_on:
+            config["join_keys"] = [p.get("left") or "" for p in body.join_on if p.get("left")]
     session.config = config
     db.add(session)
     db.commit()

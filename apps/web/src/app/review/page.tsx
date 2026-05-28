@@ -10,6 +10,8 @@ import {
   getSessionStatus,
   updateSession,
   runSessionAnalysis,
+  type JoinColumnPair,
+  type JoinSuggestion,
   type SessionDetail,
   type SessionStatus,
 } from "@/lib/api";
@@ -20,18 +22,26 @@ function tierHint(tier?: string) {
   return "Row cap and 5% sample apply when the table is large.";
 }
 
+function joinOnFromSuggestion(s: JoinSuggestion): JoinColumnPair[] {
+  return s.left_keys.map((left, i) => ({ left, right: s.right_keys[i] ?? left }));
+}
+
+function formatOverlap(pct: number) {
+  return `${Math.round(pct * 100)}%`;
+}
+
 function ReviewContent() {
   const params = useSearchParams();
   const router = useRouter();
   const ids = (params.get("ids") ?? "").split(",").filter(Boolean);
   const [intent, setIntent] = useState("");
-  const [ml, setMl] = useState(false);
+  const [ml, setMl] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(params.get("session"));
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [ingestStatus, setIngestStatus] = useState<SessionStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [joinKeys, setJoinKeys] = useState<string[]>([]);
+  const [joinOn, setJoinOn] = useState<JoinColumnPair[]>([]);
   const [starting, setStarting] = useState(false);
   const [booting, setBooting] = useState(true);
 
@@ -39,9 +49,18 @@ function ReviewContent() {
     const d = await getSession(id);
     setDetail(d);
     setFilters(d.config?.filters ?? {});
-    if (d.config?.join_keys?.length) setJoinKeys(d.config.join_keys);
-    else if (d.preview?.suggested_join_keys?.length)
-      setJoinKeys([d.preview.suggested_join_keys[0]]);
+    setMl(d.config?.ml_enabled ?? true);
+    if (d.config?.join_on?.length) {
+      setJoinOn(d.config.join_on);
+    } else if (d.preview?.join_suggestions?.length) {
+      const ok = d.preview.join_suggestions.filter((s) => s.ok);
+      const pick = ok.find((s) => s.auto_recommended) ?? ok[0];
+      if (pick) setJoinOn(joinOnFromSuggestion(pick));
+    } else if (d.config?.join_keys?.length) {
+      setJoinOn(d.config.join_keys.map((k) => ({ left: k, right: k })));
+    } else {
+      setJoinOn([]);
+    }
   }, []);
 
   // Create session once when arriving from search
@@ -111,7 +130,8 @@ function ReviewContent() {
       user_intent: intent || undefined,
       ml_enabled: ml,
       filters,
-      join_keys: joinKeys.length ? joinKeys : undefined,
+      join_on: joinOn.length ? joinOn : [],
+      join_keys: joinOn.length ? joinOn.map((p) => p.left) : [],
     });
     setDetail(d);
   }
@@ -193,8 +213,14 @@ function ReviewContent() {
   }
 
   const datasets = detail.preview?.datasets ?? [];
-  const suggested = detail.preview?.suggested_join_keys ?? [];
+  const joinSuggestions = (detail.preview?.join_suggestions ?? []).filter((s) => s.ok);
   const twoDatasets = datasets.length >= 2;
+  const selectedSuggestion = joinSuggestions.find(
+    (s) =>
+      joinOn.length > 0 &&
+      s.left_keys.length === joinOn.length &&
+      s.left_keys.every((k, i) => k === joinOn[i]?.left && s.right_keys[i] === joinOn[i]?.right),
+  );
   const backHref = `/search?ids=${ids.join(",")}`;
 
   return (
@@ -255,26 +281,59 @@ function ReviewContent() {
         ))}
       </ul>
 
-      {twoDatasets && suggested.length > 0 && (
-        <label className="mt-6 block text-sm font-medium text-stone-700">
-          Join key (2 datasets)
+      {twoDatasets && joinSuggestions.length > 0 && (
+        <div className="mt-6 space-y-2">
+          <label className="block text-sm font-medium text-stone-700">
+            Join key (2 datasets)
+          </label>
           <select
-            value={joinKeys[0] ?? ""}
+            value={
+              joinOn.length === 0
+                ? ""
+                : JSON.stringify(joinOn)
+            }
             onChange={(e) => {
               const v = e.target.value;
-              setJoinKeys(v ? [v] : []);
-              if (sessionId) updateSession(sessionId, { join_keys: v ? [v] : [] });
+              const next = v ? (JSON.parse(v) as JoinColumnPair[]) : [];
+              setJoinOn(next);
+              if (sessionId) {
+                updateSession(sessionId, {
+                  join_on: next,
+                  join_keys: next.map((p) => p.left),
+                });
+              }
             }}
-            className="mt-1 w-full rounded-xl border border-[#ddd0c0] bg-white px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-[#ddd0c0] bg-white px-3 py-2 text-sm"
           >
-            <option value="">— select column —</option>
-            {suggested.map((k) => (
-              <option key={k} value={k}>
-                {k}
+            <option value="">Analyze separately (no join)</option>
+            {joinSuggestions.map((s) => (
+              <option key={s.label} value={JSON.stringify(joinOnFromSuggestion(s))}>
+                {s.label}
+                {s.auto_recommended ? " · recommended" : ""}
+                {" · "}
+                {s.matched_rows.toLocaleString()} rows · overlap{" "}
+                {formatOverlap(s.overlap_left_pct)}/{formatOverlap(s.overlap_right_pct)}
               </option>
             ))}
           </select>
-        </label>
+          {selectedSuggestion && (
+            <p className="text-xs text-stone-500">
+              {selectedSuggestion.matched_rows.toLocaleString()} joined rows ·{" "}
+              {formatOverlap(selectedSuggestion.overlap_left_pct)} of left keys match ·{" "}
+              {formatOverlap(selectedSuggestion.overlap_right_pct)} of right keys match
+              {selectedSuggestion.auto_recommended && (
+                <span className="text-pink-600"> · auto-selected (high confidence)</span>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
+      {twoDatasets && joinSuggestions.length === 0 && (
+        <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          No safe join key found — datasets will be analyzed separately. Try aligning column names
+          (e.g. country + year) or adding filters.
+        </p>
       )}
 
       <label className="mt-6 block text-sm font-medium text-stone-700">
@@ -293,7 +352,7 @@ function ReviewContent() {
           onChange={(e) => setMl(e.target.checked)}
           className="accent-pink-500"
         />
-        Include ML insights (clustering & anomalies)
+        Include ML insights (clustering, PCA & anomaly detection)
       </label>
       <p className="mt-6 text-xs text-stone-500">
         Correlation does not imply causation. Large datasets use a disclosed random sample (seed 42).

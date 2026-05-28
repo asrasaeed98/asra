@@ -67,6 +67,13 @@ export type SessionResults = {
       datetime_columns: string[];
     }>;
     notes: string[];
+    measure_notes?: Array<{
+      column?: string;
+      label?: string;
+      source?: string;
+      disclosure?: string;
+      ai_inferred?: string;
+    }>;
   };
   ai_summary: string | null;
   ai_summary_blocks?: Array<
@@ -76,6 +83,22 @@ export type SessionResults = {
   ai_summary_source?: "anthropic" | "template" | "unavailable" | string | null;
   message?: string;
 };
+
+export type JoinSuggestion = {
+  keys: string[];
+  left_keys: string[];
+  right_keys: string[];
+  label: string;
+  matched_rows: number;
+  overlap_left_pct: number;
+  overlap_right_pct: number;
+  score: number;
+  ok: boolean;
+  warning?: string | null;
+  auto_recommended?: boolean;
+};
+
+export type JoinColumnPair = { left: string; right: string };
 
 export type SessionResponse = {
   id: string;
@@ -105,6 +128,7 @@ export type SessionDetail = {
     ml_enabled?: boolean;
     filters?: Record<string, string>;
     join_keys?: string[];
+    join_on?: JoinColumnPair[];
   };
   row_counts?: Record<string, number>;
   preview?: {
@@ -117,6 +141,7 @@ export type SessionDetail = {
       columns?: Array<{ name: string; type: string }>;
     }>;
     suggested_join_keys?: string[];
+    join_suggestions?: JoinSuggestion[];
     sampling_tier?: string;
     analysis_row_counts?: Record<string, number>;
   };
@@ -198,6 +223,7 @@ export function updateSession(
     ml_enabled?: boolean;
     filters?: Record<string, string>;
     join_keys?: string[];
+    join_on?: JoinColumnPair[];
   },
 ) {
   return apiPatch<SessionDetail>(`/sessions/${sessionId}`, patch);
