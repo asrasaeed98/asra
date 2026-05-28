@@ -22,6 +22,22 @@ function resolveDisplayFindings(data: SessionResults): { top: Finding[]; rest: F
   return { top, rest };
 }
 
+function ResultsSkeleton({ message, percent }: { message: string; percent?: number }) {
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-10 space-y-6">
+      <section className="rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-5">
+        <h2 className="text-sm font-semibold text-pink-700">Key findings</h2>
+        <LoadingBlock message={message} minHeight="min-h-[180px]" percent={percent} />
+      </section>
+      <section className="rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm animate-pulse">
+        <div className="h-4 w-32 rounded bg-[#e8ddd0]" />
+        <div className="mt-3 h-3 w-full rounded bg-[#f0e8de]" />
+        <div className="mt-2 h-3 w-2/3 rounded bg-[#f0e8de]" />
+      </section>
+    </div>
+  );
+}
+
 function ResultsContent() {
   const params = useSearchParams();
   const sessionId = params.get("session") ?? "";
@@ -43,17 +59,39 @@ function ResultsContent() {
     }
 
     load();
-    const t = setInterval(load, 2000);
+    const t = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const res = await getSessionResults(sessionId);
+        if (cancelled) return;
+        setData(res);
+        if (res.status === "complete" || res.status === "failed") {
+          clearInterval(t);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load results");
+        clearInterval(t);
+      }
+    }, 1500);
     return () => {
       cancelled = true;
       clearInterval(t);
     };
   }, [sessionId]);
 
-  const { top, rest } = useMemo(() => (data ? resolveDisplayFindings(data) : { top: [], rest: [] }), [data]);
+  const isComplete = data?.status === "complete";
+  const isFailed = data?.status === "failed";
+  const loadingMessage =
+    data?.message ??
+    (data?.phase === "finalize" ? "Writing summary and building results…" : "Finishing analysis…");
+
+  const { top, rest } = useMemo(
+    () => (data && isComplete ? resolveDisplayFindings(data) : { top: [], rest: [] }),
+    [data, isComplete],
+  );
   const summaryBlocks = useMemo(
-    () => formatSummaryBlocks(data?.ai_summary, data?.ai_summary_blocks),
-    [data?.ai_summary, data?.ai_summary_blocks],
+    () => (isComplete ? formatSummaryBlocks(data?.ai_summary, data?.ai_summary_blocks) : []),
+    [data?.ai_summary, data?.ai_summary_blocks, isComplete],
   );
 
   if (!sessionId) {
@@ -68,19 +106,22 @@ function ResultsContent() {
     );
   }
 
-  if (error) {
+  if (error || isFailed) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
-        <p className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm text-pink-900">{error}</p>
+        <p className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm text-pink-900">
+          {error ?? data?.message ?? "Analysis failed"}
+        </p>
       </div>
     );
   }
 
-  if (!data) {
+  if (!data || !isComplete) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <LoadingBlock message="Loading your findings…" minHeight="min-h-[40vh]" />
-      </div>
+      <ResultsSkeleton
+        message={loadingMessage}
+        percent={data?.percent}
+      />
     );
   }
 
@@ -118,10 +159,12 @@ function ResultsContent() {
       {report && (
         <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
-          <p className="mt-1 text-xs text-stone-500">Factual details about the data analyzed.</p>
+          <p className="mt-1 text-xs text-stone-500">
+            What was loaded, which fields were eligible for tests, and how many results were found.
+          </p>
           <DatasetDetailsPanel datasets={report.datasets} glossary={data.column_glossary ?? []} />
           {report.notes.length > 0 && (
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-stone-600">
+            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-relaxed text-stone-600">
               {report.notes.map((note) => (
                 <li key={note}>{note}</li>
               ))}
@@ -160,7 +203,7 @@ function ResultsContent() {
           <div className="mt-4 rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4">
             <p className="text-sm font-medium text-stone-700">No significant findings</p>
             <p className="mt-1 text-xs text-stone-500">
-              Try NEH grant CSVs on data.gov, or World Bank indicators like Population or GDP.
+              Try a dataset with more rows and multiple numeric columns, or broaden your filters.
             </p>
           </div>
         ) : (

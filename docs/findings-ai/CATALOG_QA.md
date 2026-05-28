@@ -31,8 +31,12 @@ Search shows **`ingestible=true` only**. Blocked resources stay in DB for admin 
 | `CATALOG_PROBE_ENABLED` | `true` | Probe URLs during sync |
 | `CATALOG_PROBE_MAX_BYTES` | `256000` | Sample size for probe |
 | `CATALOG_PROBE_TIMEOUT_SEC` | `20` | Probe timeout |
-| `CKAN_SYNC_MAX_PACKAGES` | `40` | data.gov package cap |
-| `WB_SYNC_MAX_INDICATORS` | `250` | World Bank cap |
+| `CKAN_SYNC_MAX_PACKAGES` | `200` | Target ingestible data.gov resources |
+| `CKAN_SYNC_ROWS` | `100` | CKAN page size |
+| `CKAN_SYNC_MAX_PAGES` | `20` | Max pages per CKAN query |
+| `WB_SYNC_MAX_INDICATORS` | `500` | Target ingestible World Bank indicators |
+| `CATALOG_MIN_ROWS` | `20` | Minimum rows at sync probe |
+| `ANALYSIS_MIN_ROWS` | `20` | Minimum rows after ingest |
 
 After pulling this code, run **`POST /admin/sync`** (or delete local DB) so old non-ingestible rows are replaced.
 
@@ -96,14 +100,16 @@ ingest/adapters/
 
 Each adapter returns flat `{column: scalar}` rows. New source = new adapter + fixture test, not changes in `profile.py`.
 
-### 3. Pre-analysis validation (Gate 3 — next)
+### 3. Pre-analysis validation (Gate 3)
 
 After load, before tests:
 
-- ≥ 20 rows
+- ≥ `ANALYSIS_MIN_ROWS` (default 20)
 - ≥ 1 numeric or categorical column
 - No 100% null columns
 - User-readable failure messages
+
+Implemented in `catalog/validate.py` — called during ingest.
 
 ### 4. Golden fixtures
 

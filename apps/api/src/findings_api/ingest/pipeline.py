@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from findings_api.analysis.join import safe_join_columns
 from findings_api.analysis.labels import column_entry
+from findings_api.catalog.validate import validate_table
 from findings_api.config import settings
 from findings_api.ingest.download import DownloadError, fetch_resource_bytes
 from findings_api.ingest.duckdb_store import (
@@ -60,9 +61,17 @@ def _profile_table(conn, table: str) -> dict:
     }
 
 
-def _load_bytes(conn, table: str, data: bytes, kind: str, portal: str) -> None:
-    if kind == "json" or portal == "world_bank":
-        _load_json(conn, table, data, portal=portal)
+def _load_bytes(
+    conn,
+    table: str,
+    data: bytes,
+    kind: str,
+    portal: str,
+    resource_id: str = "",
+    resource_url: str = "",
+) -> None:
+    if kind == "json" or portal in ("world_bank", "fred"):
+        _load_json(conn, table, data, portal=portal, resource_id=resource_id, resource_url=resource_url)
         return
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
         tmp.write(data)
@@ -100,10 +109,47 @@ def _flatten_worldbank_rows(rows: list[dict]) -> list[dict]:
     return flat
 
 
-def _load_json(conn, table: str, data: bytes, portal: str = "") -> None:
+def _flatten_fred_observations(observations: list, series_id: str) -> list[dict]:
+    rows: list[dict] = []
+    for obs in observations:
+        if not isinstance(obs, dict):
+            continue
+        raw_val = obs.get("value")
+        if raw_val in (".", None, ""):
+            continue
+        try:
+            value = float(raw_val)
+        except (TypeError, ValueError):
+            continue
+        rows.append({"date": obs.get("date"), "value": value, "series_id": series_id})
+    return rows
+
+
+def _series_id_from_resource(resource_id: str, resource_url: str) -> str:
+    if resource_id.startswith("fred:"):
+        return resource_id.split(":", 1)[1]
+    from urllib.parse import parse_qs, urlparse
+
+    parsed = urlparse(resource_url)
+    params = parse_qs(parsed.query)
+    series = params.get("series_id") or []
+    return series[0] if series else "unknown"
+
+
+def _load_json(
+    conn,
+    table: str,
+    data: bytes,
+    portal: str = "",
+    resource_id: str = "",
+    resource_url: str = "",
+) -> None:
     payload = json.loads(data.decode("utf-8", errors="replace"))
     rows: list[dict]
-    if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
+    if portal == "fred" and isinstance(payload, dict) and "observations" in payload:
+        series_id = _series_id_from_resource(resource_id, resource_url)
+        rows = _flatten_fred_observations(payload["observations"], series_id)
+    elif isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
         rows = payload[1]
     elif isinstance(payload, list):
         rows = payload
@@ -168,7 +214,11 @@ async def run_ingest(db: Session, session_id: str) -> None:
                         ),
                         percent=pct,
                     )
-                    data, kind = await fetch_resource_bytes(resource.resource_url, client=client)
+                    data, kind = await fetch_resource_bytes(
+                        resource.resource_url,
+                        client=client,
+                        portal=resource.portal,
+                    )
                     _set_progress(
                         db,
                         session,
@@ -181,13 +231,26 @@ async def run_ingest(db: Session, session_id: str) -> None:
                         percent=min(pct + 5, 85),
                     )
                     raw_table = f"raw_{idx}"
-                    _load_bytes(conn, raw_table, data, kind, resource.portal)
+                    _load_bytes(
+                        conn,
+                        raw_table,
+                        data,
+                        kind,
+                        resource.portal,
+                        resource.id,
+                        resource.resource_url or "",
+                    )
                     config = session.config or {}
                     filters = config.get("filters") or {}
                     filter_sql = filters.get(str(idx)) or filters.get(raw_table)
                     if filter_sql and not validate_filter(filter_sql):
                         raise DownloadError("Invalid filter expression")
                     profile = _profile_table(conn, raw_table)
+                    validation = validate_table(conn, raw_table)
+                    if not validation.ok:
+                        raise DownloadError(
+                            f"{resource.title}: {validation.reason}"
+                        )
                     profile["resource_id"] = resource.id
                     profile["title"] = resource.title
                     profile["raw_table"] = raw_table

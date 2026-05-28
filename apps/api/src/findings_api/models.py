@@ -29,6 +29,7 @@ class CatalogResource(Base):
     source_url: Mapped[str] = mapped_column(String(1024))
     resource_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     columns: Mapped[list | None] = mapped_column(JsonType, nullable=True)
+    row_count_hint: Mapped[int | None] = mapped_column(nullable=True)
     byte_size: Mapped[int | None] = mapped_column(nullable=True)
     ingestible: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     ingest_block_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)

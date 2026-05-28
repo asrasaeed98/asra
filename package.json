@@ -5,6 +5,9 @@
     "dev:web": "npm run dev --prefix apps/web",
     "dev:api": "cd apps/api && .venv/bin/uvicorn findings_api.main:app --reload --port 8000",
     "sync:catalog": "curl -X POST http://localhost:8000/admin/sync",
+    "sync:catalog:cli": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli sync",
+    "probe:catalog": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli probe",
+    "grow:catalog": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli grow",
     "build:web": "npm run build --prefix apps/web",
     "test:api": "cd apps/api && pytest"
   }

@@ -212,7 +212,13 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             display = select_display_findings(ranked_all, min(DISPLAY_TOP, len(ranked_all)))
 
         charts = charts_for_findings(display)
-        notes = analysis_notes(profiles, tests_planned=tests_planned, statistical=len(ranked_all))
+        statistical_hits = len([f for f in ranked_all if f.type != "descriptive"])
+        notes = analysis_notes(
+            profiles,
+            tests_planned=tests_planned,
+            statistical_hits=statistical_hits,
+            total_findings=len(ranked_all),
+        )
 
         column_glossary = glossary_for_columns(
             [c.name for p in profiles for c in p.columns]

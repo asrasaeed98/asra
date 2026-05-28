@@ -208,6 +208,8 @@ def session_results(session_id: str, db: Session = Depends(get_db)):
     return {
         "session_id": session_id,
         "status": session.status,
+        "phase": session.phase,
+        "percent": session.percent,
         "findings": results.get("findings", []),
         "display_finding_ids": results.get("display_finding_ids", []),
         "charts": results.get("charts", []),

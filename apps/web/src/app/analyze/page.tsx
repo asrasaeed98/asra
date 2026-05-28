@@ -57,8 +57,8 @@ function AnalyzeContent() {
           setError(s.message ?? "Analysis failed");
           return;
         }
-        if (s.status === "complete" || s.phase === "finalize" || (s.status === "analyzing" && s.percent >= 100)) {
-          setTimeout(() => router.push(`/results?session=${sessionId}`), 800);
+        if (s.status === "complete") {
+          router.push(`/results?session=${sessionId}`);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not reach API");

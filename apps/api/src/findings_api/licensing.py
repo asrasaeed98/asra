@@ -47,7 +47,7 @@ def is_allowed(normalized: str | None, portal: str) -> bool:
         return False
     if normalized in ALLOWED_STRICT:
         return True
-    if portal == "world_bank" and normalized in ALLOWED_WITH_ATTRIBUTION:
+    if portal in ("world_bank",) and normalized in ALLOWED_WITH_ATTRIBUTION:
         return True
     return False
 
@@ -61,5 +61,10 @@ def default_attribution(portal: str, title: str, publisher: str, source_url: str
         return (
             f"The World Bank: {title}: {publisher}. "
             f"Source: {source_url}. Licensed under CC BY 4.0."
+        )
+    if portal == "fred":
+        return (
+            f"Source: {publisher} via FRED — {title}. "
+            f"{source_url}. Citation requested."
         )
     return f"Source: {publisher}. {source_url}"

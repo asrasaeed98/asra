@@ -58,6 +58,7 @@ def _migrate_sqlite(engine) -> None:
         "ingest_block_reason": "VARCHAR(255)",
         "detected_format": "VARCHAR(32)",
         "probed_at": "DATETIME",
+        "row_count_hint": "INTEGER",
     }
     with engine.begin() as conn:
         for name, typedef in additions.items():

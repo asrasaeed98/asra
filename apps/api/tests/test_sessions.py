@@ -1,7 +1,9 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-SAMPLE_CSV = b"state,value,year\nCA,10.1,2020\nNY,9.2,2020\nTX,8.5,2020\n"
+SAMPLE_CSV = b"state,value,year\n" + b"".join(
+    f"ST{i % 50},{10 + i * 0.1:.1f},{2000 + i}\n".encode() for i in range(25)
+)
 
 
 @patch("findings_api.ingest.pipeline.fetch_resource_bytes", new_callable=AsyncMock)
@@ -11,7 +13,22 @@ def test_ingest_two_world_bank_datasets(mock_fetch, client, tmp_path, monkeypatc
 
     settings.session_data_dir = str(tmp_path)
 
-    wb_json = b'[{"page":1,"pages":1,"per_page":500,"total":2},[{"indicator":{"id":"1","value":"Test"},"country":{"id":"US","value":"United States"},"countryiso3code":"USA","date":"2020","value":42.0,"unit":"","obs_status":"","decimal":1}]]'
+    import json
+
+    wb_rows = [
+        {
+            "indicator": {"id": "1", "value": "Test"},
+            "country": {"id": "US", "value": "United States"},
+            "countryiso3code": "USA",
+            "date": str(2000 + i),
+            "value": float(i),
+            "unit": "",
+            "obs_status": "",
+            "decimal": 1,
+        }
+        for i in range(25)
+    ]
+    wb_json = json.dumps([{"page": 1, "pages": 1, "per_page": 500, "total": 25}, wb_rows]).encode()
 
     mock_fetch.return_value = (wb_json, "json")
 
@@ -97,14 +114,14 @@ def test_create_session_and_ingest(mock_fetch, client, tmp_path, monkeypatch):
 
     detail = client.get(f"/sessions/{session_id}").json()
     assert detail["status"] == "ready"
-    assert detail["preview"]["datasets"][0]["row_count"] == 3
+    assert detail["preview"]["datasets"][0]["row_count"] == 25
 
     patch_resp = client.patch(
         f"/sessions/{session_id}",
-        json={"filters": {"0": "state = 'CA'"}, "ml_enabled": False},
+        json={"filters": {"0": "value > 5"}, "ml_enabled": False},
     )
     assert patch_resp.status_code == 200
-    assert patch_resp.json()["config"]["filters"]["0"] == "state = 'CA'"
+    assert patch_resp.json()["config"]["filters"]["0"] == "value > 5"
 
     run = client.post(f"/sessions/{session_id}/run")
     assert run.status_code == 200

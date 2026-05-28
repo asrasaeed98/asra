@@ -20,6 +20,9 @@ dependencies = [
     "anthropic>=0.39.0",
 ]
 
+[project.scripts]
+findings-sync = "findings_api.catalog.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",

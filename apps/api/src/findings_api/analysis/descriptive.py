@@ -21,6 +21,16 @@ def _is_metric_column(name: str, series: pd.Series) -> bool:
     return float(nums.nunique()) > 1
 
 
+def _column_list(names: list[str], *, limit: int = 4) -> str:
+    if not names:
+        return ""
+    shown = names[:limit]
+    text = ", ".join(shown)
+    if len(names) > limit:
+        text += f", +{len(names) - limit} more"
+    return text
+
+
 def descriptive_findings(
     profile: TableProfile,
     conn,
@@ -129,26 +139,51 @@ def descriptive_findings(
     return findings[:4]
 
 
-def analysis_notes(profiles: list[TableProfile], *, tests_planned: int, statistical: int) -> list[str]:
+def analysis_notes(
+    profiles: list[TableProfile],
+    *,
+    tests_planned: int,
+    statistical_hits: int,
+    total_findings: int,
+) -> list[str]:
+    """Factual coverage notes for the analysis report (not dataset recommendations)."""
     notes: list[str] = []
-    if statistical == 0 and tests_planned > 0:
+
+    if tests_planned > 0:
         notes.append(
-            f"Ran {tests_planned} statistical test plan(s); none met significance thresholds (p < 0.05)."
+            f"Planned {tests_planned} statistical test(s) on the loaded sample "
+            f"({statistical_hits} significant at p < 0.05, {total_findings} total ranked result(s))."
         )
+    elif total_findings > 0:
+        notes.append(f"Produced {total_findings} descriptive summary result(s) from the loaded sample.")
+
     for profile in profiles:
+        parts: list[str] = []
+        if profile.numeric:
+            parts.append(f"numeric: {_column_list(profile.numeric)}")
+        if profile.categorical:
+            parts.append(f"categories: {_column_list(profile.categorical)}")
+        if profile.datetime:
+            parts.append(f"dates: {_column_list(profile.datetime)}")
+
+        field_summary = "; ".join(parts) if parts else "no typed columns detected"
+        notes.append(f"{profile.title} — {profile.n_rows:,} rows analyzed ({field_summary}).")
+
         if profile.n_rows < 20:
-            notes.append(f"{profile.title}: only {profile.n_rows} rows — most tests need more data.")
-        if len(profile.numeric) < 2:
+            notes.append(f"{profile.title} — small sample ({profile.n_rows} rows); many tests need more data.")
+
+        has_date = bool(profile.datetime) or any(
+            c.name.lower() in ("date", "year") for c in profile.columns
+        )
+        if len(profile.numeric) == 1 and has_date:
             notes.append(
-                f"{profile.title}: found {len(profile.numeric)} numeric column(s) — "
-                "correlation needs at least 2."
+                f"{profile.title} — time-series shape (date + numeric value); "
+                "trend tests ran, correlation skipped (needs 2+ numeric fields)."
             )
-        value_cols = [c.name for c in profile.columns if c.name.lower() == "value"]
-        if value_cols:
+        elif len(profile.numeric) < 2:
             notes.append(
-                f"{profile.title}: includes a 'value' column — typical for indicator APIs; "
-                "try population or GDP indicators, or a multi-column CSV from data.gov."
+                f"{profile.title} — only {len(profile.numeric)} numeric field(s); "
+                "correlation/regression tests were not applicable."
             )
-    if not notes and statistical == 0:
-        notes.append("Try a CSV dataset with several numeric columns (e.g. NEH grants).")
-    return notes[:5]
+
+    return notes[:6]

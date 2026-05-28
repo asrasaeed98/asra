@@ -10,6 +10,7 @@ import {
   type SearchResponse,
 } from "@/lib/api";
 import { LoadingBlock } from "@/components/LoadingBlock";
+import { formatRowCount, portalLabel } from "@/lib/catalog-labels";
 
 function ResultCard({
   item,
@@ -25,6 +26,7 @@ function ResultCard({
   const licenseDisplay = item.license_display
     .replace(/\s*[—–-]\s*attribution required/i, "")
     .trim();
+  const rowLabel = formatRowCount(item.row_count_hint);
   const addDisabled = !selected && selectionFull;
 
   return (
@@ -35,7 +37,17 @@ function ResultCard({
           {item.organization && (
             <p className="mt-1 text-sm text-stone-600">{item.organization}</p>
           )}
-          <p className="mt-2 text-xs text-stone-500">{licenseDisplay}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+            <span className="rounded-full border border-[#e8ddd0] bg-[#faf6f0] px-2 py-0.5 font-medium text-stone-600">
+              {portalLabel(item.portal)}
+            </span>
+            {rowLabel && (
+              <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800">
+                {rowLabel}
+              </span>
+            )}
+            <span>{licenseDisplay}</span>
+          </div>
           {item.attribution_required && (
             <p className="mt-2 rounded-lg border border-pink-100 bg-pink-50/60 px-2 py-1 text-xs text-pink-900">
               Attribution required when sharing results
@@ -81,17 +93,35 @@ function SearchContent() {
   const params = useSearchParams();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [portal, setPortal] = useState<string>("");
+  const [portal, setPortal] = useState(() => params.get("portal") ?? "");
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(() =>
+    (params.get("ids") ?? "").split(",").filter(Boolean).slice(0, 2),
+  );
+  const idsFromUrl = params.get("ids") ?? "";
 
+  // Only sync selection from URL when ids param changes (e.g. back from review),
+  // not when portal or other query params change.
   useEffect(() => {
-    const fromUrl = (params.get("ids") ?? "").split(",").filter(Boolean).slice(0, 2);
-    setSelected(fromUrl);
-  }, [params]);
+    setSelected(idsFromUrl.split(",").filter(Boolean).slice(0, 2));
+  }, [idsFromUrl]);
+
+  function updateSearchUrl(patch: { portal?: string; ids?: string[] }) {
+    const urlParams = new URLSearchParams(params.toString());
+    if ("portal" in patch) {
+      if (patch.portal) urlParams.set("portal", patch.portal);
+      else urlParams.delete("portal");
+    }
+    if ("ids" in patch) {
+      if (patch.ids?.length) urlParams.set("ids", patch.ids.join(","));
+      else urlParams.delete("ids");
+    }
+    const qs = urlParams.toString();
+    router.replace(qs ? `/search?${qs}` : "/search", { scroll: false });
+  }
 
   async function runSearch(query = q, source = portal) {
     setLoading(true);
@@ -100,10 +130,11 @@ function SearchContent() {
       const res = await searchDatasets(query, source || undefined);
       setData(res);
       if (res.total === 0) {
+        const sourceLabel = source ? portalLabel(source) : "any source";
         setError(
           query.trim()
-            ? "No datasets match that search. Try another term or load the catalog."
-            : "Catalog is empty. Load datasets from data.gov and World Bank (once per environment).",
+            ? `No datasets match "${query}" in ${sourceLabel}. Try another term or source.`
+            : `No datasets in ${sourceLabel}. Try another source or load the catalog.`,
         );
       }
     } catch (e) {
@@ -120,9 +151,16 @@ function SearchContent() {
     await runSearch();
   }
 
+  function onPortalChange(nextPortal: string) {
+    setPortal(nextPortal);
+    updateSearchUrl({ portal: nextPortal, ids: selected });
+  }
+
   useEffect(() => {
-    void runSearch("");
-  }, []);
+    void runSearch(q, portal);
+    // Re-search when the source filter changes; q updates go through form submit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portal]);
 
   async function onLoadCatalog() {
     setSyncing(true);
@@ -143,15 +181,18 @@ function SearchContent() {
 
   function toggle(id: string) {
     setSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 2) return prev;
-      return [...prev, id];
+      let next: string[];
+      if (prev.includes(id)) next = prev.filter((x) => x !== id);
+      else if (prev.length >= 2) return prev;
+      else next = [...prev, id];
+      updateSearchUrl({ portal, ids: next });
+      return next;
     });
   }
 
   function resetSelection() {
     setSelected([]);
-    router.replace("/search");
+    updateSearchUrl({ portal, ids: [] });
   }
 
   return (
@@ -170,12 +211,13 @@ function SearchContent() {
         />
         <select
           value={portal}
-          onChange={(e) => setPortal(e.target.value)}
+          onChange={(e) => onPortalChange(e.target.value)}
           className="rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-700"
         >
           <option value="">All sources</option>
           <option value="data_gov">data.gov only</option>
           <option value="world_bank">World Bank only</option>
+          <option value="fred">FRED only</option>
         </select>
         <button
           type="submit"
@@ -217,6 +259,7 @@ function SearchContent() {
             <p className="text-sm text-stone-500">
               Selected: {selected.length} / 2
               {data && ` · ${data.total} result(s)`}
+              {portal ? ` · ${portalLabel(portal)} only` : ""}
             </p>
             {selected.length > 0 && (
               <button

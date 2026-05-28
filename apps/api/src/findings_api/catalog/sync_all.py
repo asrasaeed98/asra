@@ -12,4 +12,7 @@ async def run_full_sync(session: Session) -> dict[str, int]:
     async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
         dg_n = await sync_datagov(session, client)
         wb_n = await sync_worldbank(session, client)
-    return {"data_gov": dg_n, "world_bank": wb_n}
+        from findings_api.catalog.sync_fred import sync_fred
+
+        fred_n = await sync_fred(session, client)
+    return {"data_gov": dg_n, "world_bank": wb_n, "fred": fred_n}

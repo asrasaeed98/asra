@@ -25,7 +25,68 @@
    - `REDIS_URL`
    - `ANTHROPIC_API_KEY` (secret)
    - `CORS_ORIGINS=https://<your-vercel-app>.vercel.app`
-4. After deploy: `POST /admin/sync` once to populate catalog (or run locally)
+4. After deploy: run initial catalog sync (see **Catalog scheduler** below)
+
+## Catalog scheduler
+
+The catalog is **not** live-fetched on every search. Refresh it on a schedule (recommended: **weekly sync**, **daily probe batch**).
+
+### Daily growth (recommended)
+
+**Weekly** refresh metadata, **daily** promote pending rows to searchable:
+
+| Schedule | Command | Purpose |
+|----------|---------|---------|
+| Weekly | `python -m findings_api.catalog.cli sync` | Re-index metadata from sources |
+| Daily | `python -m findings_api.catalog.cli grow` | Probe ~200 pending rows → ingestible |
+
+Or enable in-process schedulers (single API instance):
+
+```env
+CATALOG_SYNC_INTERVAL_HOURS=168
+CATALOG_PROBE_INTERVAL_HOURS=24
+CATALOG_PROBE_BATCH_SIZE=200
+```
+
+With `CKAN_SYNC_MAX_INDEXED=10000` and `CKAN_SYNC_MAX_PACKAGES=500`, each weekly sync indexes 10k data.gov rows but only probes 500; daily grow adds ~200 searchable datasets until the backlog clears.
+
+### Option A — CLI (recommended for Railway Cron)
+
+From `apps/api` with production `DATABASE_URL` in env:
+
+```bash
+# Full metadata sync (slow; hits upstream APIs)
+python -m findings_api.catalog.cli sync
+
+# Verify pending rows in smaller batches (run daily between full syncs)
+python -m findings_api.catalog.cli probe --limit 500
+```
+
+Or from repo root: `npm run sync:catalog:cli` / `npm run probe:catalog`
+
+Railway: add a **Cron** service with the sync command and the same env vars as the API.
+
+### Option B — HTTP admin endpoints
+
+Set `ADMIN_SYNC_TOKEN`, then:
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_SYNC_TOKEN" \
+  https://<api>/admin/sync
+
+curl -X POST -H "Authorization: Bearer $ADMIN_SYNC_TOKEN" \
+  "https://<api>/admin/catalog/probe-batch?limit=500"
+```
+
+### Option C — In-process interval (single-instance only)
+
+```env
+CATALOG_SYNC_INTERVAL_HOURS=168
+```
+
+Avoid on multi-replica deployments (duplicate syncs). Prefer Option A.
+
+See [DATA_SOURCES.md](./DATA_SOURCES.md) for scaling toward large catalogs (100k–1M metadata rows).
 
 ## Local vs cloud DB
 

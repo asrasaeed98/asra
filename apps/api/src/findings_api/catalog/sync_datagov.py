@@ -19,21 +19,25 @@ from findings_api.licensing import (
     is_allowed,
     normalize_license,
 )
+from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, max_indexed, should_probe
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
 
 CC0_MARKERS = ("creativecommons.org/publicdomain/zero", "cc0", "cc-zero")
 
-# Rotate queries — sorting by last_harvested_date mostly surfaces broken inventory JSON.
-SEARCH_QUERIES = (
-    ".csv",
-    "NEH csv",
-    "statistics csv",
-    "population csv",
-    "unemployment csv",
-    "health csv",
-    "csv OR json",
+# Bias toward tabular CSV/JSON with open licenses.
+SEARCH_QUERIES: tuple[dict[str, str], ...] = (
+    {"q": "csv", "data_type": "non-geospatial"},
+    {"q": "statistics csv"},
+    {"q": "population csv"},
+    {"q": "unemployment csv"},
+    {"q": "health csv"},
+    {"q": "economy csv"},
+    {"q": "education csv"},
+    {"org_slug": "census-bureau", "q": "csv"},
+    {"org_slug": "department-of-labor", "q": "csv"},
+    {"org_slug": "department-of-health-and-human-services", "q": "csv"},
 )
 
 
@@ -88,23 +92,30 @@ async def _probe_best_url(
 
 async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
     base = settings.catalog_api_base.rstrip("/")
-    count = 0
+    indexed = 0
     ingestible = 0
     per_page = min(settings.ckan_sync_rows, 25)
-    max_items = settings.ckan_sync_max_packages
-    seen_slugs: set[str] = set()
+    max_ingestible = settings.ckan_sync_max_packages
+    max_rows = max_indexed(max_ingestible, settings.ckan_sync_max_indexed)
+    seen_ids: set[str] = set()
 
-    # Drop stale data.gov rows from older sync strategies (e.g. package-level ZIP links).
     session.execute(delete(CatalogResource).where(CatalogResource.portal == "data_gov"))
     session.commit()
 
-    for query in SEARCH_QUERIES:
-        if count >= max_items:
+    query_list: tuple[dict[str, str], ...] = SEARCH_QUERIES
+    if max_rows > max_ingestible:
+        query_list = (*SEARCH_QUERIES, {"q": "dataset"})
+
+    for query_params in query_list:
+        if indexed >= max_rows:
             break
         after: str | None = None
         pages = 0
-        while count < max_items and pages < 4:
-            params: dict = {"q": query, "per_page": per_page}
+        max_pages = settings.ckan_sync_max_pages
+        if max_rows > max_ingestible:
+            max_pages = max(max_pages, 500)
+        while indexed < max_rows and pages < max_pages:
+            params: dict = {"per_page": per_page, **query_params}
             if after:
                 params["after"] = after
             resp = await client.get(f"{base}/search", params=params, timeout=60.0)
@@ -115,15 +126,18 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                 break
 
             for item in results:
-                if count >= max_items:
+                if indexed >= max_rows:
                     break
                 dcat = item.get("dcat") or {}
-                access = (dcat.get("accessLevel") or "").lower()
+                access = (dcat.get("accessLevel") or item.get("accessLevel") or "").lower()
                 if access and access != "public":
                     continue
 
-                slug = item.get("slug") or item.get("identifier")
-                if not slug or slug in seen_slugs:
+                slug = item.get("slug") or item.get("identifier") or dcat.get("identifier")
+                if not slug:
+                    continue
+                rec_id = f"datagov:{slug}"
+                if rec_id in seen_ids:
                     continue
 
                 title = item.get("title") or dcat.get("title") or "Dataset"
@@ -132,12 +146,12 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                 if not lic_norm:
                     continue
 
-                seen_slugs.add(slug)
+                seen_ids.add(rec_id)
                 org_obj = item.get("organization") or {}
                 org = org_obj.get("name") if isinstance(org_obj, dict) else str(org_obj)
-                org = org or item.get("publisher") or "data.gov"
+                org = org or item.get("publisher") or dcat.get("publisher", {}).get("name") or "data.gov"
                 tags = item.get("keyword") or dcat.get("keyword") or []
-                pkg_url = f"https://catalog.data.gov/dataset/{slug}"
+                pkg_url = item.get("landingPage") or dcat.get("landingPage") or f"https://catalog.data.gov/dataset/{slug}"
                 lic_display = {
                     "CC0": "CC0 1.0 — public domain dedication",
                     "US_PD": "US Public Domain",
@@ -146,7 +160,7 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                 }.get(lic_norm, lic_raw or lic_norm)
 
                 rec = CatalogResource(
-                    id=f"datagov:{slug}",
+                    id=rec_id,
                     portal="data_gov",
                     title=title,
                     description=desc or None,
@@ -162,32 +176,47 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                     source_url=pkg_url,
                     resource_url=pkg_url,
                     columns=None,
+                    row_count_hint=None,
                     byte_size=None,
                     updated_at=datetime.now(timezone.utc),
                     search_text=_build_search_text(title, desc, org, tags if isinstance(tags, list) else []),
                     ingestible=False,
                 )
 
-                if settings.catalog_probe_enabled:
+                ranked = ranked_distributions(dcat)
+                if ranked:
+                    resource_url, fmt, _ = ranked[0]
+                    rec.resource_url = resource_url
+                    rec.format = fmt or "UNKNOWN"
+
+                if not settings.catalog_probe_enabled:
+                    if ranked:
+                        rec.ingestible = True
+                    else:
+                        rec.ingestible = False
+                        rec.ingest_block_reason = "no distribution URL"
+                elif should_probe(ingestible=ingestible, ingestible_cap=max_ingestible):
                     resource_url, fmt, probe = await _probe_best_url(client, dcat)
                     if resource_url:
                         rec.resource_url = resource_url
                         rec.format = probe.detected_format or fmt or "UNKNOWN"
                         apply_probe(rec, probe)
                     else:
-                        apply_probe(rec, probe)
+                        apply_probe(rec, ProbeResult(False, "no distribution URL", "EMPTY"))
+                elif ranked:
+                    rec.ingestible = False
+                    rec.ingest_block_reason = PENDING_PROBE_REASON
                 else:
-                    ranked = ranked_distributions(dcat)
-                    if ranked:
-                        resource_url, fmt, _ = ranked[0]
-                        rec.resource_url = resource_url
-                        rec.format = fmt
-                        rec.ingestible = True
+                    rec.ingestible = False
+                    rec.ingest_block_reason = "no distribution URL"
 
+                session.merge(rec)
+                session.flush()
+                indexed += 1
                 if rec.ingestible:
                     ingestible += 1
-                session.merge(rec)
-                count += 1
+                if indexed % 25 == 0:
+                    session.commit()
 
             after = payload.get("after")
             pages += 1
@@ -195,5 +224,5 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                 break
 
     session.commit()
-    logger.info("data.gov Catalog API sync: %s datasets (%s ingestible)", count, ingestible)
-    return count
+    logger.info("data.gov Catalog API sync: %s indexed (%s ingestible)", indexed, ingestible)
+    return indexed

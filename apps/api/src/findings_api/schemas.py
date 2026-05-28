@@ -19,6 +19,7 @@ class CatalogResult(BaseModel):
     source_url: str
     resource_url: str | None = None
     byte_size: int | None = None
+    row_count_hint: int | None = None
 
 
 class SearchResponse(BaseModel):

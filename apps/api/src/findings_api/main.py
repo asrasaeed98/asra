@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from findings_api import __version__
+from findings_api.catalog.scheduler import start_catalog_scheduler
 from findings_api.catalog.sync_all import run_full_sync
 from findings_api.config import settings
 from findings_api.db import get_session_factory, init_db
@@ -19,8 +20,8 @@ _display = settings.app_display_name
 
 
 async def _sync_catalog_if_empty() -> None:
-    """Local dev helper: populate search index when the DB has no datasets yet."""
-    if settings.admin_sync_token:
+    """Populate search index when the DB has no datasets yet (local dev)."""
+    if settings.admin_sync_token and not settings.catalog_sync_run_on_startup:
         return
 
     factory = get_session_factory()
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     asyncio.create_task(_sync_catalog_if_empty())
+    start_catalog_scheduler()
     yield
 
 

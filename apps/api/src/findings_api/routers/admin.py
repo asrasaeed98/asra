@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from findings_api.catalog.sync_all import run_full_sync
+from findings_api.catalog.probe_batch import run_probe_batch
 from findings_api.config import settings
 from findings_api.db import get_db
 from findings_api.models import CatalogResource
@@ -20,6 +21,11 @@ class CatalogHealthResponse(BaseModel):
     top_block_reasons: list[dict[str, int | str]]
 
 
+class ProbeBatchResponse(BaseModel):
+    probed: int
+    newly_ingestible: int
+
+
 def _check_admin(authorization: str | None = Header(default=None)) -> None:
     token = settings.admin_sync_token
     if not token:
@@ -33,7 +39,7 @@ async def sync_catalog(
     db: Session = Depends(get_db),
     _: None = Depends(_check_admin),
 ):
-    """Pull data.gov (strict license) + World Bank (CC-BY, attribution) into catalog."""
+    """Pull data.gov Catalog API + World Bank + FRED into catalog."""
     try:
         counts = await run_full_sync(db)
     except Exception as exc:
@@ -46,6 +52,22 @@ async def sync_catalog(
             f"see GET /admin/catalog/health for probe results."
         ),
     )
+
+
+@router.post("/catalog/probe-batch", response_model=ProbeBatchResponse)
+async def probe_catalog_batch(
+    limit: int = settings.catalog_probe_batch_size,
+    db: Session = Depends(get_db),
+    _: None = Depends(_check_admin),
+):
+    """Probe pending catalog rows (metadata indexed without download verification)."""
+    if limit < 1 or limit > 5000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 5000")
+    try:
+        result = await run_probe_batch(db, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Probe batch failed: {exc}") from exc
+    return ProbeBatchResponse(**result)
 
 
 @router.get("/catalog/health", response_model=CatalogHealthResponse)

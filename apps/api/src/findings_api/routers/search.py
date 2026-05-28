@@ -26,13 +26,14 @@ def _to_result(row: CatalogResource) -> CatalogResult:
         source_url=row.source_url,
         resource_url=row.resource_url,
         byte_size=row.byte_size,
+        row_count_hint=row.row_count_hint,
     )
 
 
 @router.get("", response_model=SearchResponse)
 def search(
     q: str = Query("", description="Search query"),
-    portal: str | None = Query(None, description="data_gov | world_bank"),
+    portal: str | None = Query(None, description="data_gov | world_bank | fred"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),

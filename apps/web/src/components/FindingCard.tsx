@@ -1,6 +1,7 @@
 "use client";
 
 import { confidenceLabel, findingTypeDescription, findingTypeLabel, formatPValue } from "@/lib/finding-labels";
+import type { Finding } from "@/lib/api";
 
 type Props = {
   finding: Finding;

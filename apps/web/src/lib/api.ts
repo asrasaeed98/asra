@@ -16,6 +16,7 @@ export type CatalogResult = {
   source_url: string;
   resource_url?: string;
   byte_size?: number;
+  row_count_hint?: number | null;
 };
 
 export type SearchResponse = {
@@ -45,6 +46,8 @@ export type Finding = {
 export type SessionResults = {
   session_id: string;
   status: string;
+  phase?: string;
+  percent?: number;
   findings: Finding[];
   display_finding_ids?: string[];
   column_glossary?: Array<{ name: string; label: string; description?: string | null }>;
