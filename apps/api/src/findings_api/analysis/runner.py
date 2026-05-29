@@ -6,6 +6,7 @@ from dataclasses import replace
 from sqlalchemy.orm import Session
 
 from findings_api.analysis.ai_summary import generate_ai_summary
+from findings_api.analysis.ai_usage import is_over_budget, record_usage
 from findings_api.analysis.charts import charts_for_findings
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
 from findings_api.analysis.join import (
@@ -49,7 +50,12 @@ def _set_progress(
     db.commit()
 
 
-def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
+def _execute_plan(
+    conn,
+    plan,
+    finding_offset: int,
+    measure_contexts: dict[str, dict[str, str | None]] | None = None,
+) -> list[Finding]:
     extra = plan.extra or {}
     measure_context = extra.get("measure_context")
     if plan.kind == "correlation":
@@ -60,6 +66,7 @@ def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
             resource_id=plan.resource_id,
             dataset_title=plan.title,
             finding_offset=finding_offset,
+            measure_contexts=measure_contexts,
         )
     if plan.kind == "group_comparison" and len(plan.columns) == 2:
         num, cat = plan.columns
@@ -72,6 +79,7 @@ def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
             dataset_title=plan.title,
             finding_offset=finding_offset,
             measure_context=measure_context,
+            measure_contexts=measure_contexts,
         )
     if plan.kind == "chi_square" and len(plan.columns) == 2:
         return run_chi_square(
@@ -95,8 +103,29 @@ def _execute_plan(conn, plan, finding_offset: int) -> list[Finding]:
             finding_offset=finding_offset,
             aggregate_by_time=bool(extra.get("aggregate_by_time")),
             measure_context=measure_context,
+            measure_contexts=measure_contexts,
         )
     return []
+
+
+def _resolve_source_measures(
+    conn, table: str, title: str
+) -> dict[str, dict[str, str | None]]:
+    """Resolve measure labels for a table's generic measure columns (pre-join)."""
+    from findings_api.analysis.measure_semantics import (
+        MEASURE_COLUMN_NAMES,
+        resolve_measure_label,
+    )
+    from findings_api.analysis.profile import read_table_frame
+
+    df = read_table_frame(conn, table)
+    out: dict[str, dict[str, str | None]] = {}
+    for col in df.columns:
+        if str(col).lower() in MEASURE_COLUMN_NAMES:
+            out[str(col)] = resolve_measure_label(
+                conn, table, str(col), catalog_title=title, use_ai=True
+            )
+    return out
 
 
 async def run_analysis_pipeline(db: Session, session_id: str) -> None:
@@ -143,6 +172,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         table_meta = {table: (rid, title) for table, rid, title in tables}
         target_table = tables[0][0]
         join_report = None
+        joined_measure_contexts: dict[str, dict[str, str | None]] = {}
         if len(tables) == 2 and join_pairs:
             _set_progress(db, session, phase="join", message="Combining datasets", percent=30)
             left_t, right_t = tables[0][0], tables[1][0]
@@ -150,7 +180,44 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 conn, left_t, right_t, join_pairs
             )
             if ok:
-                build_joined_table_on(conn, left_t, right_t, join_pairs)
+                from findings_api.analysis.measure_semantics import (
+                    format_measure_disclosure,
+                    measure_slug,
+                )
+
+                # Resolve each dataset's measure label while columns are still
+                # unambiguous, then alias the generic measure columns to unique,
+                # meaningful names so they never collapse into value/value_1.
+                used_slugs: set[str] = set()
+                left_renames: dict[str, str] = {}
+                right_renames: dict[str, str] = {}
+                join_key_cols = {c.lower() for pair in join_pairs for c in pair}
+                for src_table, renames, side in (
+                    (left_t, left_renames, "left"),
+                    (right_t, right_renames, "right"),
+                ):
+                    _, src_title = table_meta[src_table]
+                    for col, ctx in _resolve_source_measures(conn, src_table, src_title).items():
+                        if col.lower() in join_key_cols:
+                            continue
+                        slug = measure_slug(
+                            str(ctx.get("label") or col),
+                            fallback=f"{side}_{col}",
+                            used=used_slugs,
+                        )
+                        renames[col] = slug
+                        new_ctx = dict(ctx)
+                        new_ctx["column"] = slug
+                        new_ctx["disclosure"] = format_measure_disclosure(new_ctx)
+                        joined_measure_contexts[slug] = new_ctx
+                build_joined_table_on(
+                    conn,
+                    left_t,
+                    right_t,
+                    join_pairs,
+                    left_renames=left_renames or None,
+                    right_renames=right_renames or None,
+                )
                 target_table = "analysis_joined"
                 rid_a, title_a = table_meta[tables[0][0]]
                 rid_b, title_b = table_meta[tables[1][0]]
@@ -181,7 +248,18 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         profiles = []
         for table in analyze_tables:
             rid, title = table_meta.get(table, ("", "Dataset"))
-            profiles.append(profile_table(conn, table, resource_id=rid, title=title))
+            extra_contexts = (
+                joined_measure_contexts if table == "analysis_joined" else None
+            )
+            profiles.append(
+                profile_table(
+                    conn,
+                    table,
+                    resource_id=rid,
+                    title=title,
+                    extra_measure_contexts=extra_contexts,
+                )
+            )
 
         _set_progress(db, session, phase="analyze", message="Running statistical tests", percent=50)
         findings: list[Finding] = []
@@ -204,7 +282,9 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     if ctx:
                         extra["measure_context"] = ctx
                         plan = replace(plan, extra=extra)
-                findings.extend(_execute_plan(conn, plan, offset))
+                findings.extend(
+                    _execute_plan(conn, plan, offset, measure_contexts=profile.measure_contexts)
+                )
                 offset = len(findings)
 
             if derived_plans:
@@ -222,7 +302,9 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                         if ctx:
                             extra["measure_context"] = ctx
                             plan = replace(plan, extra=extra)
-                    findings.extend(_execute_plan(conn, plan, offset))
+                    findings.extend(
+                        _execute_plan(conn, plan, offset, measure_contexts=profile.measure_contexts)
+                    )
                     offset = len(findings)
 
             if ml_enabled:
@@ -272,6 +354,8 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             display_dicts,
             user_intent=session.user_intent,
             dataset_titles=dataset_titles,
+            allow_ai=not is_over_budget(db),
+            on_usage=lambda model, tin, tout: record_usage(db, model, tin, tout),
         )
 
         measure_notes = [
@@ -292,6 +376,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             "ai_summary": ai_summary,
             "ai_summary_blocks": ai_summary_blocks,
             "ai_summary_source": ai_summary_source,
+            "dataset_facts": [p.facts for p in profiles if p.facts],
             "analysis_report": {
                 "tests_planned": tests_planned,
                 "statistical_findings": len(ranked_all),

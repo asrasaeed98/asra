@@ -14,6 +14,7 @@ build/
 .env.*.local
 
 # Next.js
+.next/
 apps/web/.next/
 apps/web/out/
 

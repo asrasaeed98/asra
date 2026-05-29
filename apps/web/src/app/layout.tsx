@@ -36,12 +36,26 @@ export default function RootLayout({
               {APP_NAME}
               <span className="text-pink-500">.</span>
             </Link>
-            <Link
-              href="/"
-              className="text-sm font-medium text-stone-600 transition-colors hover:text-pink-600"
-            >
-              Home
-            </Link>
+            <nav className="flex items-center gap-5">
+              <Link
+                href="/"
+                className="text-sm font-medium text-stone-600 transition-colors hover:text-pink-600"
+              >
+                Home
+              </Link>
+              <Link
+                href="/about"
+                className="text-sm font-medium text-stone-600 transition-colors hover:text-pink-600"
+              >
+                About
+              </Link>
+              <Link
+                href="/search"
+                className="rounded-lg bg-pink-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-pink-700"
+              >
+                Search datasets
+              </Link>
+            </nav>
           </div>
         </header>
         <main className="flex-1">{children}</main>

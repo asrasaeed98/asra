@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import pandas as pd
 
@@ -8,6 +9,10 @@ from findings_api.analysis.types import ColumnProfile, TableProfile
 
 _MAX_CATEGORICAL_CARDINALITY = 50
 _MIN_CATEGORICAL_CARDINALITY = 2
+# Categorical columns at or below this many distinct values get their full value
+# list in dataset_facts (so chat can answer membership questions like "is the US
+# in here?"). Above it we fall back to a few examples to keep token cost bounded.
+_VALUE_LIST_MAX = 300
 
 _TIME_COLUMN_NAMES = frozenset(
     {"date", "year", "yr", "fiscal_year", "calendar_year", "obs_date", "time_period", "period"}
@@ -121,6 +126,38 @@ def _classify_column(name: str, series: pd.Series) -> str:
     return "other"
 
 
+def _column_fact(name: str, kind: str, series: pd.Series) -> dict[str, Any]:
+    fact: dict[str, Any] = {"name": str(name), "type": kind}
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        return fact
+    try:
+        if kind == "datetime":
+            dt = pd.to_datetime(non_null, errors="coerce").dropna()
+            if len(dt):
+                lo, hi = dt.min(), dt.max()
+                yearly = bool((dt.dt.month == 1).all() and (dt.dt.day == 1).all())
+                fact["min"] = str(lo.year) if yearly else lo.date().isoformat()
+                fact["max"] = str(hi.year) if yearly else hi.date().isoformat()
+        elif kind == "numeric":
+            fact["min"] = round(float(non_null.min()), 4)
+            fact["max"] = round(float(non_null.max()), 4)
+            fact["mean"] = round(float(non_null.mean()), 4)
+        elif kind == "categorical":
+            cleaned = non_null.astype(str).str.strip()
+            cleaned = cleaned[cleaned != ""]
+            distinct = int(cleaned.nunique())
+            fact["distinct"] = distinct
+            if 0 < distinct <= _VALUE_LIST_MAX:
+                fact["values"] = sorted(cleaned.unique().tolist())
+            else:
+                top = cleaned.value_counts().head(6)
+                fact["examples"] = [str(v) for v in top.index]
+    except (TypeError, ValueError):
+        pass
+    return fact
+
+
 def profile_dataframe(
     df: pd.DataFrame,
     *,
@@ -129,6 +166,8 @@ def profile_dataframe(
     title: str,
 ) -> TableProfile:
     columns: list[ColumnProfile] = []
+    fact_columns: list[dict[str, Any]] = []
+    time_coverage: dict[str, Any] | None = None
     for col in df.columns:
         series = df[col]
         kind = _classify_column(str(col), series)
@@ -142,12 +181,26 @@ def profile_dataframe(
                 null_pct=null_pct,
             )
         )
+        fact = _column_fact(str(col), kind, series)
+        fact_columns.append(fact)
+        if kind == "datetime" and time_coverage is None and "min" in fact and "max" in fact:
+            time_coverage = {"column": str(col), "start": fact["min"], "end": fact["max"]}
+
+    facts = {
+        "title": title,
+        "n_rows": len(df),
+        "columns": fact_columns,
+    }
+    if time_coverage is not None:
+        facts["time_coverage"] = time_coverage
+
     return TableProfile(
         table=table,
         resource_id=resource_id,
         title=title,
         n_rows=len(df),
         columns=columns,
+        facts=facts,
     )
 
 
@@ -157,6 +210,7 @@ def profile_table(
     *,
     resource_id: str,
     title: str,
+    extra_measure_contexts: dict[str, dict[str, str | None]] | None = None,
 ) -> TableProfile:
     from findings_api.analysis.measure_semantics import (
         MEASURE_COLUMN_NAMES,
@@ -166,8 +220,12 @@ def profile_table(
     df = read_table_frame(conn, table)
     profile = profile_dataframe(df, table=table, resource_id=resource_id, title=title)
     contexts: dict[str, dict[str, str | None]] = {}
+    injected = extra_measure_contexts or {}
     for col in profile.numeric:
-        if col.lower() in MEASURE_COLUMN_NAMES:
+        if col in injected:
+            # Pre-resolved before a join (when the source table was unambiguous).
+            contexts[col] = injected[col]
+        elif col.lower() in MEASURE_COLUMN_NAMES:
             contexts[col] = resolve_measure_label(
                 conn, table, col, catalog_title=title, use_ai=True
             )

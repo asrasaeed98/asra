@@ -116,6 +116,33 @@ def measure_label(
     )
 
 
+def build_column_labels(
+    columns: list[str],
+    *,
+    dataset_title: str = "",
+    measure_contexts: dict[str, dict[str, str | None]] | None = None,
+) -> dict[str, str]:
+    """Resolve display labels for measure columns that have a measure context.
+
+    Only columns with a real measure context are returned; callers fall back to
+    ``column_label`` for the rest (so group/time columns keep their plain names).
+    """
+    contexts = measure_contexts or {}
+    out: dict[str, str] = {}
+    for col in columns:
+        ctx = contexts.get(col)
+        if ctx and ctx.get("label"):
+            out[col] = measure_label(col, dataset_title=dataset_title, measure_context=ctx)
+    return out
+
+
+def label_from_details(details: dict | None, col: str) -> str:
+    """Display label for a finding column: prefer resolved measure label."""
+    labels = (details or {}).get("column_labels") or {}
+    chosen = labels.get(col)
+    return str(chosen) if chosen else column_label(col)
+
+
 def column_description(name: str) -> str | None:
     entry = _COLUMN_DICTIONARY.get(_normalize_key(name))
     return entry.get("description") if entry else None

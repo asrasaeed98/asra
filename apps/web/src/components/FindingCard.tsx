@@ -85,12 +85,6 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
           </p>
           <h3 className="mt-1 text-sm font-semibold leading-snug text-stone-800">{headline}</h3>
 
-          {measureDisclosure && (
-            <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-2.5 py-2 text-xs leading-relaxed text-violet-900">
-              {measureDisclosure}
-            </p>
-          )}
-
           {impact && (
             <p className="mt-2 text-sm leading-relaxed text-stone-700">{impact}</p>
           )}
@@ -107,6 +101,11 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
               <summary className="cursor-pointer text-xs font-medium text-pink-600 hover:text-pink-700">
                 View technical details
               </summary>
+              {measureDisclosure && (
+                <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-2.5 py-2 text-xs leading-relaxed text-violet-900">
+                  {measureDisclosure}
+                </p>
+              )}
               {technicalTitle && technicalTitle !== headline && (
                 <p className="mt-2 text-xs text-stone-500">{technicalTitle}</p>
               )}
@@ -156,6 +155,7 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
 export function DatasetDetailsPanel({
   datasets,
   glossary,
+  measureNotes = [],
 }: {
   datasets: Array<{
     title: string;
@@ -165,10 +165,19 @@ export function DatasetDetailsPanel({
     datetime_columns: string[];
   }>;
   glossary: Array<{ name: string; label: string; description?: string | null }>;
+  measureNotes?: Array<{
+    column?: string;
+    label?: string;
+    source?: string;
+    disclosure?: string;
+    ai_inferred?: string;
+  }>;
 }) {
   const glossaryByName = new Map(glossary.map((e) => [e.name.toLowerCase(), e]));
+  const notes = measureNotes.filter((n) => n.disclosure);
   const hasContent =
     datasets.length > 0 ||
+    notes.length > 0 ||
     glossary.some((e) => e.description || e.label !== e.name);
 
   if (!hasContent) return null;
@@ -195,6 +204,23 @@ export function DatasetDetailsPanel({
             )}
           </div>
         ))}
+        {notes.length > 0 && (
+          <ul className="space-y-2">
+            {notes.map((note) => (
+              <li
+                key={`${note.column}-${note.label}`}
+                className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs leading-relaxed text-violet-900"
+              >
+                {note.disclosure}
+                {note.source === "ai_inferred" && (
+                  <span className="ml-2 rounded-full bg-violet-200/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-800">
+                    AI-inferred
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </details>
   );

@@ -87,3 +87,22 @@ class SessionResponse(BaseModel):
     id: str
     status: str
     resource_ids: list[str]
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+
+
+class ChatTurn(BaseModel):
+    role: str
+    content: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    questions_used: int
+    questions_remaining: int
+    limit_reached: bool
+    grounded: bool = True
+    ai_paused: bool = False
+    messages: list[ChatTurn] = Field(default_factory=list)

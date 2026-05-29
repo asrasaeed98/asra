@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from findings_api.analysis.labels import column_label
+from findings_api.analysis.labels import column_label, label_from_details
 from findings_api.analysis.types import Finding
+
+
+def _col(finding: Finding, idx: int) -> str:
+    """Display label for a finding column — prefers resolved measure labels."""
+    return label_from_details(finding.details, finding.columns[idx])
 
 # Legacy alias — ML findings are ranked alongside statistical tests when quality gates pass.
 EXCLUDE_FROM_RANKING = frozenset()
@@ -30,17 +35,17 @@ def _maybe_money(label: str, value: float) -> str:
 def headline_for(finding: Finding) -> str:
     cols = finding.columns
     if finding.type == "group_comparison" and len(cols) >= 2:
-        return f"{column_label(cols[0])} differs across {column_label(cols[1])}"
+        return f"{_col(finding, 0)} differs across {_col(finding, 1)}"
     if finding.type == "spearman_correlation" and len(cols) >= 2:
         direction = finding.details.get("direction", "related")
         if direction == "negative":
-            return f"{column_label(cols[0])} and {column_label(cols[1])} move in opposite directions"
-        return f"{column_label(cols[0])} and {column_label(cols[1])} tend to move together"
+            return f"{_col(finding, 0)} and {_col(finding, 1)} move in opposite directions"
+        return f"{_col(finding, 0)} and {_col(finding, 1)} tend to move together"
     if finding.type == "time_trend" and len(cols) >= 1:
         direction = finding.details.get("direction", "change")
-        return f"{column_label(cols[0])} shows an {direction} trend over time"
+        return f"{_col(finding, 0)} shows an {direction} trend over time"
     if finding.type == "chi_square" and len(cols) >= 2:
-        return f"{column_label(cols[0])} and {column_label(cols[1])} appear linked"
+        return f"{_col(finding, 0)} and {_col(finding, 1)} appear linked"
     if finding.type == "descriptive":
         return finding.title
     if finding.type in ("kmeans_cluster", "dbscan_cluster"):
@@ -54,8 +59,8 @@ def headline_for(finding: Finding) -> str:
 
 def impact_for(finding: Finding) -> str | None:
     if finding.type == "group_comparison" and len(finding.columns) >= 2:
-        metric = column_label(finding.columns[0])
-        group = column_label(finding.columns[1]).lower()
+        metric = _col(finding, 0)
+        group = _col(finding, 1).lower()
         means: dict = finding.details.get("group_means") or {}
         top = finding.details.get("highest_group")
         bottom = finding.details.get("lowest_group")
@@ -71,14 +76,14 @@ def impact_for(finding: Finding) -> str | None:
         return f"{metric} is not uniform across {group}s — some groups average noticeably higher or lower."
 
     if finding.type == "spearman_correlation" and len(finding.columns) >= 2:
-        a, b = column_label(finding.columns[0]), column_label(finding.columns[1])
+        a, b = _col(finding, 0), _col(finding, 1)
         direction = finding.details.get("direction", "positive")
         if direction == "negative":
             return f"When {a.lower()} goes up, {b.lower()} tends to go down (and vice versa) in this dataset."
         return f"Higher {a.lower()} tends to coincide with higher {b.lower()} in this dataset."
 
     if finding.type == "time_trend" and finding.columns:
-        metric = column_label(finding.columns[0])
+        metric = _col(finding, 0)
         direction = finding.details.get("direction", "upward")
         word = "increased" if direction == "upward" else "decreased"
         return f"{metric} generally {word} over the time period covered by this data."

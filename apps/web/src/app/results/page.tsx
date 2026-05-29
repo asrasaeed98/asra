@@ -3,12 +3,49 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ChatPanel } from "@/components/ChatPanel";
 import { DatasetDetailsPanel, FindingCard, MetricsGuide } from "@/components/FindingCard";
 import { KeyFindingsContent } from "@/components/KeyFindingsContent";
 import { LoadingBlock } from "@/components/LoadingBlock";
 import { VegaChart } from "@/components/VegaChart";
 import { getSessionResults, type Finding, type SessionResults } from "@/lib/api";
 import { formatSummaryBlocks } from "@/lib/summary-format";
+
+function analysisReportSummary(
+  report: NonNullable<SessionResults["analysis_report"]>,
+): string[] {
+  const datasets = report.datasets ?? [];
+  const rows = datasets.reduce((sum, d) => sum + (d.n_rows || 0), 0);
+  const sig = report.statistical_findings ?? report.total_findings ?? 0;
+  const planned = report.tests_planned ?? 0;
+  const titles = datasets.map((d) => d.title).filter(Boolean);
+  const joined = titles.some((t) => t.includes(" + "));
+  const rowsStr = rows.toLocaleString();
+  const lines: string[] = [];
+
+  if (planned > 0) {
+    const analyses = planned === 1 ? "analysis" : "analyses";
+    const patterns =
+      sig === 1 ? "1 statistically meaningful pattern" : `${sig} statistically meaningful patterns`;
+    lines.push(
+      sig > 0
+        ? `We ran ${planned} ${analyses} on ${rowsStr} rows and found ${patterns}, shown as the result cards below. Each is unlikely to be due to chance (p < 0.05).`
+        : `We ran ${planned} ${analyses} on ${rowsStr} rows but found no statistically significant patterns.`,
+    );
+  } else if ((report.total_findings ?? 0) > 0) {
+    const n = report.total_findings ?? 0;
+    lines.push(`We summarized ${rowsStr} rows of data (${n} descriptive result${n === 1 ? "" : "s"}).`);
+  }
+
+  if (titles.length) {
+    lines.push(
+      joined
+        ? `Data analyzed: ${titles.join("; ")} — two datasets joined and compared.`
+        : `Data analyzed: ${titles.join("; ")}.`,
+    );
+  }
+  return lines;
+}
 
 function resolveDisplayFindings(data: SessionResults): { top: Finding[]; rest: Finding[] } {
   const all = data.findings ?? [];
@@ -156,42 +193,7 @@ function ResultsContent() {
         </p>
       </section>
 
-      {/* 2. Analysis report (dataset facts) */}
-      {report && (
-        <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
-          <p className="mt-1 text-xs text-stone-500">
-            What was loaded, which fields were eligible for tests, and how many results were found.
-          </p>
-          <DatasetDetailsPanel datasets={report.datasets} glossary={data.column_glossary ?? []} />
-          {report.measure_notes && report.measure_notes.length > 0 && (
-            <ul className="mt-3 space-y-2">
-              {report.measure_notes.map((note) => (
-                <li
-                  key={`${note.column}-${note.label}`}
-                  className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs leading-relaxed text-violet-900"
-                >
-                  {note.disclosure}
-                  {note.source === "ai_inferred" && (
-                    <span className="ml-2 rounded-full bg-violet-200/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-800">
-                      AI-inferred
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {report.notes.length > 0 && (
-            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-relaxed text-stone-600">
-              {report.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* 3. Key results (computed cards) */}
+      {/* 2. Key results (computed cards + visuals — the evidence) */}
       <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm" id="key-results">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-stone-800">Key results</h2>
@@ -278,10 +280,37 @@ function ResultsContent() {
         </section>
       )}
 
-      <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5">
-        <h2 className="text-sm font-semibold text-stone-800">Chat</h2>
-        <p className="mt-2 text-sm text-stone-600">Ask questions about these results — slice 8.</p>
-      </section>
+      {/* 3. Grounded chat (after the evidence, so questions are informed) */}
+      <ChatPanel sessionId={sessionId} initial={data.chat} />
+
+      {/* 4. Analysis report / technical details (collapsed depth) */}
+      {report && (
+        <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
+          <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-stone-700">
+            {analysisReportSummary(report).map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+          <DatasetDetailsPanel
+            datasets={report.datasets}
+            glossary={data.column_glossary ?? []}
+            measureNotes={report.measure_notes ?? []}
+          />
+          {report.notes.length > 0 && (
+            <details className="mt-3 text-xs">
+              <summary className="cursor-pointer font-medium text-stone-500 hover:text-stone-700">
+                Technical details
+              </summary>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-relaxed text-stone-500">
+                {report.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
 
       <footer className="mt-8 border-t border-[#e8ddd0] pt-4 text-xs text-stone-400">
         <p>Session {sessionId}</p>

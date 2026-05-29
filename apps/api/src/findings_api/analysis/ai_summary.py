@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from typing import Any
 
 from findings_api.config import settings
@@ -278,16 +279,22 @@ def generate_ai_summary(
     *,
     user_intent: str | None = None,
     dataset_titles: list[str] | None = None,
+    allow_ai: bool = True,
+    on_usage: Callable[[str, int, int], None] | None = None,
 ) -> tuple[str, str, list[dict[str, Any]]]:
     """
     Return (plain_text, source, blocks) where source is anthropic | template.
+
+    When ``allow_ai`` is False (e.g. monthly budget exhausted) the model is
+    skipped and the deterministic template summary is used. ``on_usage`` is
+    invoked with (model, tokens_in, tokens_out) after a successful API call.
     """
     titles = dataset_titles or []
     if not findings:
         blocks = template_summary_blocks([], user_intent=user_intent, dataset_titles=titles)
         return blocks_to_plain_text(blocks), "template", blocks
 
-    if not settings.anthropic_api_key:
+    if not settings.anthropic_api_key or not allow_ai:
         blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
         return blocks_to_plain_text(blocks), "template", blocks
 
@@ -301,6 +308,13 @@ def generate_ai_summary(
             max_tokens=700,
             messages=[{"role": "user", "content": prompt}],
         )
+        if on_usage is not None:
+            usage = getattr(response, "usage", None)
+            on_usage(
+                settings.anthropic_model_summary,
+                int(getattr(usage, "input_tokens", 0) or 0),
+                int(getattr(usage, "output_tokens", 0) or 0),
+            )
         text = "".join(block.text for block in response.content if block.type == "text").strip()
         blocks = _parse_summary_json(text)
         if not blocks:

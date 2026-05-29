@@ -81,7 +81,28 @@ export type SessionResults = {
     | { type: "list"; items: string[] }
   > | null;
   ai_summary_source?: "anthropic" | "template" | "unavailable" | string | null;
+  chat?: ChatState;
   message?: string;
+};
+
+export type ChatTurn = { role: "user" | "assistant"; content: string };
+
+export type ChatState = {
+  messages: ChatTurn[];
+  questions_used: number;
+  questions_remaining: number;
+  max_questions: number;
+  ai_paused?: boolean;
+};
+
+export type ChatResponse = {
+  reply: string;
+  questions_used: number;
+  questions_remaining: number;
+  limit_reached: boolean;
+  grounded: boolean;
+  ai_paused?: boolean;
+  messages: ChatTurn[];
 };
 
 export type JoinSuggestion = {
@@ -237,6 +258,10 @@ export function runSessionAnalysis(sessionId: string) {
 
 export function getSessionResults(sessionId: string) {
   return apiGet<SessionResults>(`/sessions/${sessionId}/results`);
+}
+
+export function sendSessionChat(sessionId: string, message: string) {
+  return apiPost<ChatResponse>(`/sessions/${sessionId}/chat`, { message });
 }
 
 export async function triggerCatalogSync(): Promise<{

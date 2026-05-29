@@ -20,6 +20,28 @@ _UNIT_COLUMNS = ("unit", "units", "unit_of_measure", "uom")
 _TRUSTED_SOURCES = frozenset({"indicator_column"})
 
 
+def measure_slug(label: str, *, fallback: str, used: set[str]) -> str:
+    """Build a unique, SQL-safe column name from a measure label.
+
+    e.g. "Population living in slums (% of urban population)" ->
+    "population_living_in_slums". Guarantees a valid identifier that does not
+    collide with names already in ``used``.
+    """
+    base = re.sub(r"[^a-z0-9]+", "_", (label or "").lower()).strip("_")
+    base = re.sub(r"_+", "_", base)[:48].strip("_")
+    if not base or base[0].isdigit():
+        base = f"measure_{base}".strip("_")
+    if not base:
+        base = fallback
+    candidate = base
+    n = 2
+    while candidate in used:
+        candidate = f"{base}_{n}"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
 def _constant_string(series: pd.Series) -> str | None:
     non_null = series.dropna()
     if len(non_null) == 0:

@@ -21,6 +21,7 @@ class TableProfile:
     n_rows: int
     columns: list[ColumnProfile] = field(default_factory=list)
     measure_contexts: dict[str, dict[str, str | None]] = field(default_factory=dict)
+    facts: dict[str, Any] = field(default_factory=dict)
 
     def measure_context(self, column: str) -> dict[str, str | None] | None:
         return self.measure_contexts.get(column)

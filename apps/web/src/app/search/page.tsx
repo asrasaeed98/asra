@@ -180,14 +180,12 @@ function SearchContent() {
   }
 
   function toggle(id: string) {
-    setSelected((prev) => {
-      let next: string[];
-      if (prev.includes(id)) next = prev.filter((x) => x !== id);
-      else if (prev.length >= 2) return prev;
-      else next = [...prev, id];
-      updateSearchUrl({ portal, ids: next });
-      return next;
-    });
+    let next: string[];
+    if (selected.includes(id)) next = selected.filter((x) => x !== id);
+    else if (selected.length >= 2) return;
+    else next = [...selected, id];
+    setSelected(next);
+    updateSearchUrl({ portal, ids: next });
   }
 
   function resetSelection() {

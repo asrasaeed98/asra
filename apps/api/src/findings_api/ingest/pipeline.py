@@ -14,7 +14,7 @@ from findings_api.analysis.join import suggest_joins
 from findings_api.analysis.labels import column_entry
 from findings_api.catalog.validate import validate_table
 from findings_api.config import settings
-from findings_api.ingest.download import DownloadError, fetch_resource_bytes
+from findings_api.ingest.download import DownloadError, fetch_resource_bytes, redact_secrets
 from findings_api.ingest.duckdb_store import (
     build_analysis_view_sql,
     connect,
@@ -309,10 +309,11 @@ async def run_ingest(db: Session, session_id: str) -> None:
         db.rollback()
         session = db.get(AnalysisSession, session_id)
         if session:
+            safe_message = redact_secrets(str(exc))
             session.status = "failed"
             session.phase = "failed"
-            session.message = str(exc)
-            session.error = str(exc)
+            session.message = safe_message
+            session.error = safe_message
             session.percent = 0
             db.add(session)
             db.commit()

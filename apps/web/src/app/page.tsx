@@ -1,23 +1,24 @@
 import Link from "next/link";
 import { APP_NAME } from "@/lib/app-name";
 
-const VALUE_PROPS = [
+const STEPS = [
   {
     step: 1,
-    title: "Search real licensed datasets",
+    title: "Search real, licensed datasets",
     description:
-      "Browse vetted public catalogs with license labels and ingestible file checks.",
+      "Browse vetted public catalogs (data.gov, FRED, World Bank) with license checks. We pull the data in and handle cleaning and joins for you.",
   },
   {
     step: 2,
-    title: "Select up to 2 datasets",
-    description: "Choose one or two public tables for each analysis.",
+    title: "We compute the statistics",
+    description:
+      "Real statistical tests, including correlations, group differences, time trends, and category associations, plus machine-learning models that surface clusters and hidden patterns. Each result carries its p-value, sample size, and the query behind it, so the numbers are computed, not guessed.",
   },
   {
     step: 3,
-    title: "Run analysis, get ranked results",
+    title: "Get ranked, plain-language findings",
     description:
-      "We compute the statistics first, then rank the strongest patterns. AI summaries explain what the numbers mean, grounded in your results and never inventing figures.",
+      "The strongest patterns first, explained simply, with every number traceable to a result, plus a grounded chat for follow-up questions.",
   },
 ] as const;
 
@@ -26,17 +27,18 @@ export default function Home() {
     <div className="mx-auto max-w-3xl px-4 py-14 sm:py-20">
       <section className="text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-600">
-          Open data → insights
+          Insights from open data
         </p>
         <h1 className="mt-4 text-4xl font-semibold tracking-tight text-stone-800 sm:text-5xl">
-          Find insights in{" "}
+          Turn public data into{" "}
           <span className="bg-gradient-to-r from-pink-600 to-pink-400 bg-clip-text text-transparent">
-            open data
+            findings you can trust
           </span>
+          .
         </h1>
         <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-stone-600">
-          {APP_NAME} helps researchers, journalists, and curious analysts turn public datasets
-          into ranked findings you can trust, with plain-language summaries tied to real numbers.
+          {APP_NAME} searches authoritative public datasets, runs real statistical tests, and
+          explains the results in plain language, with every number traceable to a computed result.
         </p>
         <div className="mt-8">
           <Link
@@ -53,7 +55,7 @@ export default function Home() {
           How it works
         </h2>
         <ol className="mt-6 space-y-4">
-          {VALUE_PROPS.map(({ step, title, description }) => (
+          {STEPS.map(({ step, title, description }) => (
             <li
               key={step}
               className="flex gap-4 rounded-2xl border border-[#e8ddd0] bg-white/80 p-5 shadow-sm backdrop-blur-sm sm:gap-5 sm:p-6"
@@ -71,6 +73,15 @@ export default function Home() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="mt-14 rounded-2xl border border-[#e8ddd0] bg-[#faf8f5] p-6 text-center sm:mt-16">
+        <h2 className="text-lg font-semibold text-stone-800">Built for analysts and the rest of the team</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-stone-600">
+          Rigorous enough for researchers, journalists, and policy work, yet readable enough for
+          anyone who just needs the answer. Plain-language summaries up top, the methodology a click
+          away.
+        </p>
       </section>
     </div>
   );

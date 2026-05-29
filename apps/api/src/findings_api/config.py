@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     app_display_name: str = "Findings"
     session_data_dir: str = "./session_data"
     max_download_bytes: int = 50_000_000
+    download_max_retries: int = 3
+    download_backoff_base_sec: float = 0.5
+    chat_max_questions: int = 5
+    chat_max_tokens: int = 400
+    chat_history_turns: int = 4
+    chat_max_message_chars: int = 1000
+    chat_context_char_cap: int = 16000
+    # Hard ceiling on Anthropic spend per calendar month (USD). <= 0 disables the cap.
+    ai_monthly_budget_usd: float = 100.0
 
 
 settings = Settings()

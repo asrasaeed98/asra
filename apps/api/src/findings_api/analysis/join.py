@@ -223,18 +223,40 @@ def build_joined_table(conn, left: str, right: str, join_key: str) -> tuple[str,
     return build_joined_table_on(conn, left, right, [(join_key, join_key)])
 
 
+def _rename_subquery(table: str, renames: dict[str, str] | None) -> str:
+    """Wrap a table so chosen columns are renamed (DuckDB ``SELECT * RENAME``).
+
+    Used to give each dataset's generic measure column (e.g. ``value``) a unique,
+    meaningful name before the join so it never collides into ``value``/``value_1``.
+    """
+    if not renames:
+        return table
+    clauses = ", ".join(
+        f"{sql_ident(old)} AS {sql_ident(new)}" for old, new in renames.items()
+    )
+    return f"(SELECT * RENAME ({clauses}) FROM {table})"
+
+
 def build_joined_table_on(
-    conn, left: str, right: str, pairs: list[tuple[str, str]]
+    conn,
+    left: str,
+    right: str,
+    pairs: list[tuple[str, str]],
+    *,
+    left_renames: dict[str, str] | None = None,
+    right_renames: dict[str, str] | None = None,
 ) -> tuple[str, int]:
     joined = "analysis_joined"
-    if all(left == right for left, right in pairs):
-        using = ", ".join(sql_ident(left) for left, _ in pairs)
-        sql = f"SELECT * FROM {left} INNER JOIN {right} USING ({using})"
+    left_src = _rename_subquery(left, left_renames)
+    right_src = _rename_subquery(right, right_renames)
+    if all(lft == rgt for lft, rgt in pairs):
+        using = ", ".join(sql_ident(lft) for lft, _ in pairs)
+        sql = f"SELECT * FROM {left_src} AS l INNER JOIN {right_src} AS r USING ({using})"
     else:
         cond = _join_condition("l", "r", pairs)
         sql = (
-            f"SELECT l.*, r.* FROM {left} AS l "
-            f"INNER JOIN {right} AS r ON {cond}"
+            f"SELECT l.*, r.* FROM {left_src} AS l "
+            f"INNER JOIN {right_src} AS r ON {cond}"
         )
     conn.execute(f"CREATE OR REPLACE TABLE {joined} AS {sql}")
     count = int(conn.execute(f"SELECT COUNT(*) FROM {joined}").fetchone()[0])

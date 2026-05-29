@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from findings_api.analysis.labels import column_label, measure_label
+from findings_api.analysis.labels import column_label, label_from_details, measure_label
 from findings_api.analysis.types import ChartSpec, Finding
 
 _ROW_LIMITS = {
@@ -218,14 +218,16 @@ def _chart_for_finding(conn, finding: Finding, *, all_findings: list[Finding]) -
         values = _fetch_rows(conn, finding.sql, limit=_ROW_LIMITS["spearman_correlation"])
         if not values:
             return None
+        x_title = label_from_details(finding.details, x)
+        y_title = label_from_details(finding.details, y)
         spec = _base_spec(
             mark={"type": "point", "filled": True, "opacity": 0.65, "color": "#e879a9"},
             encoding={
-                "x": {"field": x, "type": "quantitative", "title": column_label(x)},
-                "y": {"field": y, "type": "quantitative", "title": column_label(y)},
+                "x": {"field": x, "type": "quantitative", "title": x_title},
+                "y": {"field": y, "type": "quantitative", "title": y_title},
                 "tooltip": [
-                    {"field": x, "type": "quantitative", "title": column_label(x)},
-                    {"field": y, "type": "quantitative", "title": column_label(y)},
+                    {"field": x, "type": "quantitative", "title": x_title},
+                    {"field": y, "type": "quantitative", "title": y_title},
                 ],
             },
         )

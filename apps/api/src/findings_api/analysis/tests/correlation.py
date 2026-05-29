@@ -6,7 +6,7 @@ import math
 import pandas as pd
 from scipy import stats
 
-from findings_api.analysis.labels import column_label
+from findings_api.analysis.labels import build_column_labels, label_from_details
 from findings_api.analysis.profile import read_table_frame, sql_ident
 from findings_api.analysis.types import Finding
 
@@ -28,8 +28,12 @@ def run_correlation(
     resource_id: str,
     dataset_title: str,
     finding_offset: int,
+    measure_contexts: dict[str, dict[str, str | None]] | None = None,
 ) -> list[Finding]:
     df = read_table_frame(conn, table)
+    column_labels = build_column_labels(
+        list(columns), dataset_title=dataset_title, measure_contexts=measure_contexts
+    )
     findings: list[Finding] = []
     idx = finding_offset
     for a, b in itertools.combinations(columns, 2):
@@ -45,12 +49,15 @@ def run_correlation(
             continue
         idx += 1
         direction = "positive" if r > 0 else "negative"
+        pair_labels = {c: column_labels[c] for c in (a, b) if c in column_labels}
+        label_a = label_from_details({"column_labels": column_labels}, a)
+        label_b = label_from_details({"column_labels": column_labels}, b)
         findings.append(
             Finding(
                 id=f"f_{idx}",
                 type="spearman_correlation",
                 title=(
-                    f"{column_label(a)} and {column_label(b)} "
+                    f"{label_a} and {label_b} "
                     f"{'move in opposite directions' if r < 0 else 'tend to move together'}"
                 ),
                 columns=[a, b],
@@ -65,7 +72,11 @@ def run_correlation(
                 ),
                 datasets=[resource_id],
                 score=_score(float(r), float(p)),
-                details={"dataset_title": dataset_title, "direction": direction},
+                details={
+                    "dataset_title": dataset_title,
+                    "direction": direction,
+                    "column_labels": pair_labels,
+                },
             )
         )
     findings.sort(key=lambda x: x.score, reverse=True)
