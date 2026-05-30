@@ -8,6 +8,12 @@
     "sync:catalog:cli": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli sync",
     "probe:catalog": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli probe",
     "grow:catalog": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli grow",
+    "sync:catalog:prod": "scripts/railway-catalog.sh sync",
+    "grow:catalog:prod": "scripts/railway-catalog.sh grow",
+    "probe:catalog:prod": "scripts/railway-catalog.sh probe",
+    "health:catalog:prod": "scripts/railway-catalog.sh health",
+    "smoke:catalog": "scripts/catalog-smoke.sh",
+    "setup:github-catalog": "scripts/github-catalog-secrets.sh",
     "build:web": "npm run build --prefix apps/web",
     "test:api": "cd apps/api && pytest"
   },

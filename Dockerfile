@@ -14,4 +14,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 ENV SESSION_DATA_DIR=/tmp/session_data
 
-CMD ["sh", "-c", "uvicorn findings_api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+COPY scripts/railway-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
