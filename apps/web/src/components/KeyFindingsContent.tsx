@@ -38,15 +38,15 @@ export function KeyFindingsContent({
       {blocks.map((block, i) => {
         if (block.type === "paragraph") {
           return (
-            <p key={`p-${i}-${block.text.slice(0, 24)}`} className="leading-relaxed">
+            <p key={`p-${i}`} className="leading-relaxed">
               {block.text}
             </p>
           );
         }
         return (
           <ul key={`ul-${i}`} className="list-disc space-y-2 pl-5 marker:text-pink-400">
-            {block.items.map((item) => (
-              <li key={item.slice(0, 48)} className="pl-0.5">
+            {block.items.map((item, j) => (
+              <li key={`li-${i}-${j}`} className="pl-0.5">
                 {item}
               </li>
             ))}

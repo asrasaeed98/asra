@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { formatSeconds, LoadingBlock } from "@/components/LoadingBlock";
 import {
   createSession,
+  getGuidedPath,
   getSession,
   getSessionStatus,
   updateSession,
@@ -34,7 +35,9 @@ function ReviewContent() {
   const params = useSearchParams();
   const router = useRouter();
   const ids = (params.get("ids") ?? "").split(",").filter(Boolean);
-  const [intent, setIntent] = useState("");
+  const pairId = params.get("pair");
+  const intentParam = params.get("intent");
+  const [intent, setIntent] = useState(() => intentParam ?? "");
   const [ml, setMl] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(params.get("session"));
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -63,6 +66,31 @@ function ReviewContent() {
     }
   }, []);
 
+  useEffect(() => {
+    if (intentParam) setIntent(intentParam);
+  }, [intentParam]);
+
+  useEffect(() => {
+    if (!pairId || !sessionId) return;
+    let cancelled = false;
+    getGuidedPath(pairId)
+      .then(async (path) => {
+        if (cancelled) return;
+        if (path.user_intent) setIntent(path.user_intent);
+        if (path.join_hint.length) {
+          setJoinOn(path.join_hint);
+          await updateSession(sessionId, {
+            join_on: path.join_hint,
+            user_intent: path.user_intent || undefined,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pairId, sessionId]);
+
   // Create session once when arriving from search
   useEffect(() => {
     if (ids.length === 0) return;
@@ -73,12 +101,16 @@ function ReviewContent() {
       setLoadError(null);
       try {
         let sid = sessionId;
+        const startIntent = intentParam || intent || undefined;
         if (!sid) {
-          const created = await createSession(ids, intent || undefined, ml);
+          const created = await createSession(ids, startIntent, ml);
           sid = created.id;
           if (!cancelled) {
             setSessionId(sid);
-            router.replace(`/review?ids=${ids.join(",")}&session=${sid}`);
+            const qs = new URLSearchParams({ ids: ids.join(","), session: sid });
+            if (pairId) qs.set("pair", pairId);
+            if (startIntent) qs.set("intent", startIntent);
+            router.replace(`/review?${qs}`);
           }
         }
       } catch (e) {

@@ -32,15 +32,43 @@ def _maybe_money(label: str, value: float) -> str:
     return _fmt_number(value)
 
 
+def _group_plural(group_label: str) -> str:
+    g = group_label.lower().strip()
+    if g in ("country", "country name"):
+        return "countries"
+    if g.endswith("y") and len(g) > 1:
+        return g[:-1] + "ies"
+    if g.endswith("s"):
+        return g
+    return f"{g}s"
+
+
+def _correlation_strength(abs_r: float) -> str:
+    if abs_r >= 0.7:
+        return "Strong"
+    if abs_r >= 0.4:
+        return "Moderate"
+    return "Weak"
+
+
 def headline_for(finding: Finding) -> str:
     cols = finding.columns
     if finding.type == "group_comparison" and len(cols) >= 2:
         return f"{_col(finding, 0)} differs across {_col(finding, 1)}"
     if finding.type == "spearman_correlation" and len(cols) >= 2:
-        direction = finding.details.get("direction", "related")
+        a, b = _col(finding, 0), _col(finding, 1)
+        r = finding.value
+        direction = finding.details.get("direction", "positive")
+        if r is not None:
+            strength = _correlation_strength(abs(float(r)))
+            assoc = "negative association" if direction == "negative" else "positive association"
+            return (
+                f"{strength} {assoc}: {a} and {b} "
+                f"(Spearman r = {_fmt_number(float(r))}, n = {finding.n:,})"
+            )
         if direction == "negative":
-            return f"{_col(finding, 0)} and {_col(finding, 1)} move in opposite directions"
-        return f"{_col(finding, 0)} and {_col(finding, 1)} tend to move together"
+            return f"{a} and {b} move in opposite directions"
+        return f"{a} and {b} tend to move together"
     if finding.type == "time_trend" and len(cols) >= 1:
         direction = finding.details.get("direction", "change")
         return f"{_col(finding, 0)} shows an {direction} trend over time"
@@ -68,19 +96,28 @@ def impact_for(finding: Finding) -> str | None:
             top_v = means.get(top)
             bottom_v = means.get(bottom)
             if top_v is not None and bottom_v is not None:
+                plural = _group_plural(group)
                 return (
-                    f"Average {metric.lower()} is highest for {top} "
+                    f"Average {metric} is highest for {top} "
                     f"({_maybe_money(metric, float(top_v))}) and lowest for {bottom} "
-                    f"({_maybe_money(metric, float(bottom_v))}) across {group}s in this sample."
+                    f"({_maybe_money(metric, float(bottom_v))}) across {plural} in this sample."
                 )
-        return f"{metric} is not uniform across {group}s — some groups average noticeably higher or lower."
+        plural = _group_plural(group)
+        return f"{metric} is not uniform across {plural} — some groups average noticeably higher or lower."
 
     if finding.type == "spearman_correlation" and len(finding.columns) >= 2:
         a, b = _col(finding, 0), _col(finding, 1)
         direction = finding.details.get("direction", "positive")
+        r = finding.value
+        r_text = f" (Spearman r = {_fmt_number(float(r))})" if r is not None else ""
         if direction == "negative":
-            return f"When {a.lower()} goes up, {b.lower()} tends to go down (and vice versa) in this dataset."
-        return f"Higher {a.lower()} tends to coincide with higher {b.lower()} in this dataset."
+            return (
+                f"When {a} rises, {b} tends to fall{r_text} across {finding.n:,} paired observations."
+            )
+        return (
+            f"Higher {a} tends to coincide with higher {b}{r_text} "
+            f"across {finding.n:,} paired observations."
+        )
 
     if finding.type == "time_trend" and finding.columns:
         metric = _col(finding, 0)
@@ -135,6 +172,8 @@ def enrich_finding(finding: Finding) -> Finding:
     if impact:
         finding.details["impact"] = impact
     finding.title = finding.details["headline"]
+    if finding.details.get("primary"):
+        finding.details["badge"] = "Key relationship"
     return finding
 
 

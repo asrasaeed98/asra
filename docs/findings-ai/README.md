@@ -34,6 +34,7 @@
 | [ACCURACY.md](./ACCURACY.md) | Trust and Finding schema |
 | [PRESENTATION.md](./PRESENTATION.md) | Results UI, charts, AI summary |
 | [UX_FLOW.md](./UX_FLOW.md) | Wizard and progress copy |
+| [GUIDED_PATHS.md](./GUIDED_PATHS.md) | Question-first discovery (dual entry with search) |
 | [CHAT.md](./CHAT.md) | Anthropic orchestration |
 | [COSTS.md](./COSTS.md) | API and infra estimates |
 | [MARKET_RESEARCH.md](./MARKET_RESEARCH.md) | Competitors and positioning |

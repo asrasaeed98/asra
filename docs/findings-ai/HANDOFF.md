@@ -6,11 +6,12 @@ Short “start here” for the next agent or session. Full planning docs remain 
 
 | Item | Value |
 |------|--------|
-| Branch | `main` (pushed to `origin/main`) |
-| Latest work | May 28 session: grounded chat + AI budget cap + dataset facts + API resilience + UX reorder + home/about (see `git log`) |
-| Prior commits | `ba06814` analysis/join/ML/chart UX · `39cadda` catalog expansion |
-| Working tree | Clean (untracked `.next/` at repo root is gitignored) |
+| Branch | `main` (last push: `ba0a917` — May 28 chat/budget/ingest session) |
+| Latest work | **May 29 session (uncommitted):** analysis output quality, guided paths (Slice 12a), explore UI polish |
+| Prior commits | `ba0a917` chat/budget/facts · `ba06814` analysis/join/ML · `39cadda` catalog |
+| Working tree | **Dirty** — API + web + docs changes from May 29; not yet committed |
 | App name | **FunFinds** (`NEXT_PUBLIC_APP_NAME=FunFinds`) |
+| Tests | `104 passed` in `apps/api` (includes `test_guided*.py`, `test_ranker_joined.py`) |
 
 ## Start local dev
 
@@ -20,7 +21,7 @@ Short “start here” for the next agent or session. Full planning docs remain 
 
 ```bash
 cd /path/to/asra
-pip install -e "apps/api[dev]"   # or use apps/api/.venv
+pip install -e "apps/api[dev]"   # adds pyyaml for guided paths
 uvicorn findings_api.main:app --reload --port 8000
 ```
 
@@ -37,6 +38,8 @@ npx next start --hostname 127.0.0.1 --port 3002
 
 Open **http://127.0.0.1:3002** (not 3000 unless dev server is confirmed healthy).
 
+**If web 500s:** `rm -rf apps/web/.next && npm run build && npx next start …`
+
 **CORS:** `.env.example` includes origins for localhost/127.0.0.1 ports 3000–3002. Match in your `.env`.
 
 **Catalog (once per DB):**
@@ -46,15 +49,66 @@ curl -X POST http://localhost:8000/admin/sync
 # or: npm run sync:catalog:cli
 ```
 
+Re-sync after pulling May 29 changes — six new World Bank curated indicators were added.
+
 **Health check:**
 
 ```bash
 curl http://localhost:8000/health
 curl "http://localhost:8000/search?q=gdp"
-curl -I http://127.0.0.1:3002/
+curl http://localhost:8000/guided/topics
+curl -I http://127.0.0.1:3002/explore
 ```
 
-## What was done (May 28, 2026 session)
+## What was done (May 29, 2026 session — uncommitted)
+
+### Analysis output quality (2-dataset / joined panels)
+
+When users run curated pairs (GDP + life expectancy, etc.), correlation should lead the story — not tautological geo group comparisons.
+
+| Area | Change |
+|------|--------|
+| `selector.py` | Skip geo group-comparison tests on joined 2-measure panels (duplicate “country differs” findings) |
+| `tests/group_comparison.py` | Normalized scoring for group comparisons |
+| `ranker.py` | Boost joined correlation in ranking; pin primary correlation #1 in display order |
+| `runner.py` | Pass joined-panel context into ranker/selector |
+| `narrative.py` | Headlines include Spearman *r* + *n*; “Key relationship” badge; grammar fix |
+| `ai_summary.py` | Template ordering puts primary correlation first |
+| `FindingCard.tsx` | Renders “Key relationship” badge |
+| Tests | `test_ranker_joined.py`, updates to `test_selector_geo_dedupe.py` |
+
+**Note:** Re-run old sessions to see new ranking/headlines; stored results are unchanged.
+
+### Guided paths — Slice 12a (question-first discovery)
+
+Dual entry: **Explore** (`/explore`) for question-first users, **Search** (`/search`) for catalog browse. Both converge at Review → Analyze → Results.
+
+| Area | Change |
+|------|--------|
+| `guided/paths.yaml` | 11 curated paths across 5 topics (wealth-health, energy-access, poverty-gdp, literacy-internet, unemployment-growth, emissions-wealth, water-sanitation, US health/unemployment/inflation/gdp-unemployment) |
+| `guided/loader.py` | YAML loader + path lookup |
+| `routers/guided.py` | `GET /guided/topics`, `/paths`, `/paths/{id}`, `/suggest` |
+| `catalog/search_rank.py` | Quality + relevance scoring for browse search |
+| `routers/search.py` | Returns `quality_score`, `match_reason`, `relevance_score` |
+| `worldbank_diversity.py` | +6 curated WB indicators |
+| `pyproject.toml` | `pyyaml` dependency |
+| **Web** | `/explore` page, home fork (Ask a question / Browse datasets), nav Explore + Search, search quality hints, Review pre-fill via `?pair=` + `?intent=` |
+| `lib/api.ts` | Guided API client types/functions |
+| Tests | `test_guided.py`, `test_guided_api.py` |
+
+Full product spec: [GUIDED_PATHS.md](./GUIDED_PATHS.md). Build checklist: [BUILD_ORDER.md § Slice 12](./BUILD_ORDER.md).
+
+### Explore UI polish (same session)
+
+`/explore` was crowded (question + topic pills + full cards + individual datasets). Redesigned:
+
+- Single-line question input; example questions as inline text links
+- **Topic filter** as a dropdown in the pairings section header (not a row of pills)
+- Compact pair cards — title, description, dataset line; “Why this example” in `<details>`
+- Search results: individual datasets collapsed under “Other individual datasets”
+- Unified list for browse mode (“Example analyses”) and search mode (“Best matches”)
+
+## What was done (May 28, 2026 session — committed `ba0a917`)
 
 ### API resilience & security (`ingest/download.py`, `pipeline.py`, `config.py`)
 - **World Bank pagination P0 fixed:** per-page retry with backoff; deep-page 4xx returns partial data with a warning; only page 1 / empty is fatal.
@@ -117,17 +171,19 @@ Chart/label/facts/dedupe changes apply to **new analyses**. Old sessions need a 
 
 ## Pending items (priority order)
 
-### Done this session (was pending)
-- ✅ **P0 World Bank pagination 400s** — fixed in `fetch_worldbank_json` (per-page retry + partial data).
-- ✅ **Slice 8 grounded chat** — shipped with 5-question cap + budget guard.
-- ✅ **Join-time value renaming** — measure labels resolved pre-join and aliased.
+### Done May 29 (was pending)
+- ✅ **Joined-panel output quality** — correlation leads; geo group comparisons suppressed on 2-measure joins
+- ✅ **Slice 12a guided paths** — `/guided/*` API, `paths.yaml`, `/explore`, search quality ranking, home fork
+- ✅ **Explore UI** — less crowded; topic dropdown filter on pairings
 
 ### Action required (you)
-- **Rotate the FRED API key** — it was exposed in an error URL earlier; redaction is now in place but rotate to be safe.
+- **Commit & push** May 29 work when ready (large uncommitted diff across API + web + docs)
+- **Rotate the FRED API key** — it was exposed in an error URL earlier; redaction is now in place but rotate to be safe
+- **Catalog re-sync** locally (and prod after deploy) for new WB curated indicators
 
 ### P1 — Deploy to production
 
-Code is on GitHub but **not deployed** this session.
+Code on GitHub is behind local work. After commit:
 
 See [DEPLOY.md](./DEPLOY.md):
 - **Web:** Vercel, root `apps/web`, set `NEXT_PUBLIC_API_URL`
@@ -143,6 +199,35 @@ After deploy: run catalog sync on production DB.
 | WB trailing-page edge cases | Some indicators report optimistic `meta.pages`; validate against empty responses (largely mitigated by retry/partial-data fix) |
 | Chat SQL path | Safe aggregate lookups for questions facts can't answer (e.g. "which country had the most ATMs in 2015"); membership on columns >300 distinct |
 | Chat discoverability | Chat now sits below findings; consider a "jump to chat" nudge |
+| Guided path CI smoke tests | Run every `paths.yaml` entry ingest → join → analyze in CI against live catalog |
+
+### P2 — Join hygiene & cross-dataset correlation (backlog — Slice 11)
+
+When no **safe** join exists, the app analyzes datasets separately — no cross-dataset correlation. Full probabilistic / neural record linkage is **out of scope** (trust risk, wrong fit for macro catalog).
+
+| Phase | Item | Status | Notes |
+|-------|------|--------|-------|
+| **0** | Join failure telemetry | Not started | Log `% sessions` join ok / fail by reason; optional `GET /admin/join/stats` |
+| **1** | **Lookup normalization** | Not started | Country names → ISO3, US states → USPS/FIPS; trim, case-fold |
+| **1** | Match disclosure in Review UI | Not started | Match rate, unmatched samples, normalized-key label |
+| **2** | Curated “pairs that work” | **Partial** | Shipped via `/explore` + `paths.yaml`; not yet in search cards / join badges |
+| **2** | Fuzzy string match on geo keys | Not started | Jaro-Winkler with confidence gate |
+| **2** | Ecological correlation fallback | Not started | Country means with explicit caveat card |
+| **3** | Cross-dataset semantic comparison | Not started | Suggest join keys — no *r* without alignment |
+| — | ~~Full probabilistic linkage~~ | Deferred | Person/address domains |
+| — | ~~Neural cross-dataset correlation~~ | Not planned | Does not create observational units |
+
+**Implementation touchpoints:** `join.py`, `ingest/pipeline.py`, Review UI join picker, `tests/test_join_normalization.py`.
+
+### P2 — Guided paths — remaining (Slice 12b/12c)
+
+| Phase | Item | Status |
+|-------|------|--------|
+| **12a** | Curated paths + `/guided/suggest` + `/explore` UI | ✅ Done |
+| **12b** | Search empty-state topic tiles; funnel metrics (guided vs browse) | Not started |
+| **12c** | Guarded LLM query expansion; join-aware pair badges | After Slice 11 |
+
+Full spec: [GUIDED_PATHS.md](./GUIDED_PATHS.md).
 
 ### Background catalog growth (scheduler)
 
@@ -158,14 +243,17 @@ In-process scheduler (`catalog/scheduler.py`) grows the searchable catalog. **Of
 
 | Area | Path |
 |------|------|
+| Guided paths | `apps/api/src/findings_api/guided/paths.yaml`, `guided/loader.py`, `routers/guided.py` |
+| Search ranking | `apps/api/src/findings_api/catalog/search_rank.py`, `routers/search.py` |
+| Ranker / selector | `apps/api/src/findings_api/analysis/ranker.py`, `selector.py`, `narrative.py` |
 | WB download | `apps/api/src/findings_api/ingest/download.py` |
 | Ingest pipeline | `apps/api/src/findings_api/ingest/pipeline.py` |
-| Profile / selector | `apps/api/src/findings_api/analysis/profile.py`, `selector.py` |
-| Analysis runner | `apps/api/src/findings_api/analysis/runner.py` |
+| Profile / runner | `apps/api/src/findings_api/analysis/profile.py`, `runner.py` |
 | ML | `apps/api/src/findings_api/analysis/ml/clustering.py` |
 | Charts | `apps/api/src/findings_api/analysis/charts.py` |
 | Join | `apps/api/src/findings_api/analysis/join.py` |
 | Measure semantics | `apps/api/src/findings_api/analysis/measure_semantics.py` |
+| Explore UI | `apps/web/src/app/explore/page.tsx` |
 | Review UI | `apps/web/src/app/review/page.tsx` |
 | Results UI | `apps/web/src/app/results/page.tsx`, `KeyFindingsContent.tsx` |
 | Catalog sync | `apps/api/src/findings_api/catalog/` |
@@ -174,12 +262,14 @@ In-process scheduler (`catalog/scheduler.py`) grows the searchable catalog. **Of
 
 ```bash
 cd apps/api
-pytest tests/test_join.py tests/test_charts.py tests/test_ml_suite.py \
-       tests/test_worldbank_panel.py tests/test_measure_semantics.py \
-       tests/test_sessions.py tests/test_descriptive.py -q
+pytest -q   # 104 tests including guided + ranker_joined
 
 cd ../web && npm run build
 ```
+
+Spot-check manually:
+- `/explore` — browse examples, topic filter, search a question, use a pair → Review
+- Run a verified pair (wealth-health) → Results should show correlation first with *r* in headline
 
 ## Secrets (never commit)
 
@@ -192,13 +282,14 @@ cd ../web && npm run build
 
 ## What to tell the next agent
 
-> “Read `docs/findings-ai/HANDOFF.md`. Grounded chat, AI budget cap, dataset facts, and WB pagination are done. Next: rotate the FRED key, then deploy (DEPLOY.md). Optionally enable the catalog growth scheduler.”
+> “Read `docs/findings-ai/HANDOFF.md`. May 29 work is **uncommitted**: joined-panel output quality (ranker/selector/narrative), Slice 12a guided paths (`/explore`, `/guided/*`, search quality ranking), and explore UI polish. **104 API tests pass.** Next: commit & push, catalog re-sync for new WB indicators, rotate FRED key, deploy (DEPLOY.md). Backlog: Slice 11 join normalization, guided path CI smoke tests, Slice 12b polish.”
 
 ## Doc index
 
 | Doc | When to read |
 |-----|----------------|
-| [BUILD_ORDER.md](./BUILD_ORDER.md) | Slice roadmap (many slices now partially done) |
+| [BUILD_ORDER.md](./BUILD_ORDER.md) | Slice roadmap (12a checked off) |
+| [GUIDED_PATHS.md](./GUIDED_PATHS.md) | Explore vs Search product spec |
 | [DEPLOY.md](./DEPLOY.md) | Vercel + Railway |
 | [DATA_SOURCES.md](./DATA_SOURCES.md) | Catalog sources |
 | [CATALOG_QA.md](./CATALOG_QA.md) | Quality gates |

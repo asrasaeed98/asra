@@ -148,7 +148,7 @@ export function ChatPanel({
           e.preventDefault();
           ask(input);
         }}
-        className="mt-4 flex gap-2"
+        className="mt-4 flex flex-col gap-2 sm:flex-row"
       >
         <input
           type="text"
@@ -168,7 +168,7 @@ export function ChatPanel({
         <button
           type="submit"
           disabled={!canSend}
-          className="rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-pink-700"
+          className="w-full rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-pink-700 sm:w-auto"
         >
           {loading ? "…" : "Ask"}
         </button>

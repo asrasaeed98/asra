@@ -18,7 +18,7 @@ from findings_api.analysis.ml.clustering import run_ml_suite
 from findings_api.analysis.profile import profile_table
 from findings_api.analysis.labels import glossary_for_columns
 from findings_api.analysis.narrative import enrich_findings
-from findings_api.analysis.ranker import DISPLAY_TOP, rank_findings, select_display_findings
+from findings_api.analysis.ranker import DISPLAY_TOP, apply_ranking_context, rank_findings, select_display_findings
 from findings_api.analysis.selector import plans_for_table
 from findings_api.analysis.tests.chi_square import run_chi_square
 from findings_api.analysis.tests.correlation import run_correlation
@@ -245,6 +245,12 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             else [t[0] for t in tables]
         )
 
+        joined_ok = bool(
+            join_report
+            and int(join_report.get("matched_rows") or 0) >= 8
+            and not join_report.get("warning")
+        )
+
         profiles = []
         for table in analyze_tables:
             rid, title = table_meta.get(table, ("", "Dataset"))
@@ -266,7 +272,8 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         tests_planned = 0
         offset = 0
         for profile in profiles:
-            plans = plans_for_table(profile)
+            table_joined = joined_ok and profile.table == "analysis_joined"
+            plans = plans_for_table(profile, joined=table_joined)
             primary_plans = [
                 p for p in plans if (p.extra or {}).get("tier") != "derived"
             ]
@@ -318,9 +325,16 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 findings.extend(run_ml_suite(conn, profile, finding_offset=offset))
                 offset = len(findings)
 
+        if joined_ok:
+            for finding in findings:
+                if finding.type == "spearman_correlation":
+                    finding.details = dict(finding.details or {})
+                    finding.details["primary"] = True
+
         ranked_candidates = [f for f in findings if f.type != "descriptive"]
+        apply_ranking_context(ranked_candidates, joined=joined_ok)
         ranked_all = enrich_findings(rank_findings(ranked_candidates))
-        display = select_display_findings(ranked_all, DISPLAY_TOP)
+        display = select_display_findings(ranked_all, DISPLAY_TOP, joined=joined_ok)
         if not ranked_all:
             desc_offset = 0
             for profile in profiles:

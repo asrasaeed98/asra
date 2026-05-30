@@ -15,10 +15,12 @@ _MIN_GROUP_SIZE = 3
 _MAX_P = 0.05
 
 
-def _score(effect: float, p_value: float | None) -> float:
+def _score(normalized_effect: float, p_value: float | None) -> float:
+    """Rank score on a 0–1 effect scale so group tests compare fairly with correlation."""
+    strength = min(1.0, abs(normalized_effect))
     if p_value is None or p_value <= 0:
-        return abs(effect)
-    return abs(effect) * min(20.0, -math.log10(p_value))
+        return strength
+    return strength * min(20.0, -math.log10(p_value))
 
 
 def run_group_comparison(
@@ -72,6 +74,12 @@ def run_group_comparison(
     if pd.isna(p) or float(p) >= _MAX_P:
         return []
 
+    col_std = float(work[numeric_col].astype(float).std())
+    if col_std > 0:
+        normalized_effect = min(1.0, float(effect) / (4.0 * col_std))
+    else:
+        normalized_effect = 0.0
+
     idx = finding_offset + 1
     top = max(means, key=means.get)
     bottom = min(means, key=means.get)
@@ -99,7 +107,7 @@ def run_group_comparison(
                 f"FROM {table} GROUP BY 1 ORDER BY 2 DESC"
             ),
             datasets=[resource_id],
-            score=_score(float(effect), float(p)),
+            score=_score(normalized_effect, float(p)),
             details={
                 "dataset_title": dataset_title,
                 "measure_context": measure_context,

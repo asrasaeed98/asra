@@ -20,6 +20,39 @@ class CatalogResult(BaseModel):
     resource_url: str | None = None
     byte_size: int | None = None
     row_count_hint: int | None = None
+    relevance_score: float | None = None
+    quality_score: float | None = None
+    match_reason: str | None = None
+
+
+class GuidedTopicOut(BaseModel):
+    id: str
+    title: str
+    description: str
+    icon: str = "chart"
+    path_count: int = 0
+
+
+class GuidedPathPair(BaseModel):
+    path_id: str
+    title: str
+    topic: str
+    quality: str
+    description: str
+    user_intent: str
+    resource_ids: list[str]
+    join_hint: list[dict[str, str]] = Field(default_factory=list)
+    why: str
+    datasets: list[CatalogResult] = Field(default_factory=list)
+
+
+class GuidedSuggestResponse(BaseModel):
+    query: str
+    topic: str | None = None
+    paraphrase: str | None = None
+    recommended_pairs: list[GuidedPathPair] = Field(default_factory=list)
+    datasets: list[CatalogResult] = Field(default_factory=list)
+    fallback_message: str | None = None
 
 
 class SearchResponse(BaseModel):
