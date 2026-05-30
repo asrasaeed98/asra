@@ -72,6 +72,21 @@ def _number_allowed(value: float, allowed: set[float]) -> bool:
     return False
 
 
+def _expand_allowed_numbers(allowed: set[float]) -> None:
+    """Allow common alternate forms (percent display, small counts, rounded ints)."""
+    allowed.update(float(i) for i in range(1, 26))
+    for value in list(allowed):
+        if 0 < abs(value) <= 1.01:
+            allowed.add(round(value * 100, 4))
+            allowed.add(round(abs(value) * 100, 4))
+        if abs(value) >= 1 and abs(round(value) - value) < 0.01:
+            allowed.add(float(round(value)))
+
+
+def _years_from_text(text: str) -> set[float]:
+    return {float(match.group(1)) for match in re.finditer(r"\b(19\d{2}|20[0-3]\d)\b", text)}
+
+
 def validate_summary_numbers(
     summary: str,
     findings: list[dict[str, Any]],
@@ -85,6 +100,8 @@ def validate_summary_numbers(
             allowed.add(float(match.group(1).replace(",", "")))
         except ValueError:
             continue
+    allowed.update(_years_from_text(context_text))
+    _expand_allowed_numbers(allowed)
     for num in _numbers_in_text(summary):
         if not _number_allowed(num, allowed):
             logger.warning("AI summary rejected: number %s not in findings", num)
@@ -290,69 +307,114 @@ def sanitize_summary_text(text: str) -> str:
     return "\n\n".join(parts)
 
 
+_NO_DIGITS_RETRY = (
+    "\n\nIMPORTANT: Do not use any digits (0-9) in your JSON values. "
+    "Describe magnitudes qualitatively (e.g. \"most countries\", \"strong relationship\")."
+)
+
+
+def _summary_context_text(
+    titles: list[str],
+    user_intent: str | None,
+    extra_context: str,
+) -> str:
+    return " ".join(titles) + " " + (user_intent or "") + " " + extra_context
+
+
+def _anthropic_summary_blocks(
+    client: Any,
+    findings: list[dict[str, Any]],
+    *,
+    user_intent: str | None,
+    dataset_titles: list[str],
+    prompt_suffix: str = "",
+    on_usage: Callable[[str, int, int], None] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
+    prompt = _build_prompt(findings, user_intent=user_intent, dataset_titles=dataset_titles) + prompt_suffix
+    response = client.messages.create(
+        model=settings.anthropic_model_summary,
+        max_tokens=700,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    if on_usage is not None:
+        usage = getattr(response, "usage", None)
+        on_usage(
+            settings.anthropic_model_summary,
+            int(getattr(usage, "input_tokens", 0) or 0),
+            int(getattr(usage, "output_tokens", 0) or 0),
+        )
+    text = "".join(block.text for block in response.content if block.type == "text").strip()
+    blocks = _parse_summary_json(text)
+    if not blocks:
+        text = sanitize_summary_text(text)
+        if not text:
+            raise ValueError("empty model response")
+        blocks = legacy_text_to_blocks(text)
+    else:
+        text = blocks_to_plain_text(blocks)
+    return text, blocks
+
+
 def generate_ai_summary(
     findings: list[dict[str, Any]],
     *,
     user_intent: str | None = None,
     dataset_titles: list[str] | None = None,
+    extra_context: str = "",
     allow_ai: bool = True,
     on_usage: Callable[[str, int, int], None] | None = None,
-) -> tuple[str, str, list[dict[str, Any]]]:
+) -> tuple[str, str, list[dict[str, Any]], str | None]:
     """
-    Return (plain_text, source, blocks) where source is anthropic | template.
+    Return (plain_text, source, blocks, fallback_reason).
 
-    When ``allow_ai`` is False (e.g. monthly budget exhausted) the model is
-    skipped and the deterministic template summary is used. ``on_usage`` is
-    invoked with (model, tokens_in, tokens_out) after a successful API call.
+    ``source`` is ``anthropic`` or ``template``. ``fallback_reason`` is set when
+    the template path was chosen after AI was skipped or failed.
     """
     titles = dataset_titles or []
+    context_text = _summary_context_text(titles, user_intent, extra_context)
     if not findings:
         blocks = template_summary_blocks([], user_intent=user_intent, dataset_titles=titles)
-        return blocks_to_plain_text(blocks), "template", blocks
+        return blocks_to_plain_text(blocks), "template", blocks, None
 
-    if not settings.anthropic_api_key or not allow_ai:
+    if not settings.anthropic_api_key:
         blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
-        return blocks_to_plain_text(blocks), "template", blocks
+        return blocks_to_plain_text(blocks), "template", blocks, "no_api_key"
+    if not allow_ai:
+        blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
+        return blocks_to_plain_text(blocks), "template", blocks, "budget_exhausted"
 
+    fallback_reason: str | None = "api_error"
     try:
         import anthropic
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        prompt = _build_prompt(findings, user_intent=user_intent, dataset_titles=titles)
-        response = client.messages.create(
-            model=settings.anthropic_model_summary,
-            max_tokens=700,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if on_usage is not None:
-            usage = getattr(response, "usage", None)
-            on_usage(
-                settings.anthropic_model_summary,
-                int(getattr(usage, "input_tokens", 0) or 0),
-                int(getattr(usage, "output_tokens", 0) or 0),
-            )
-        text = "".join(block.text for block in response.content if block.type == "text").strip()
-        blocks = _parse_summary_json(text)
-        if not blocks:
-            text = sanitize_summary_text(text)
-            if not text:
-                raise ValueError("empty model response")
-            blocks = legacy_text_to_blocks(text)
-        else:
-            text = blocks_to_plain_text(blocks)
+        for attempt, suffix in enumerate(("", _NO_DIGITS_RETRY)):
+            try:
+                text, blocks = _anthropic_summary_blocks(
+                    client,
+                    findings,
+                    user_intent=user_intent,
+                    dataset_titles=titles,
+                    prompt_suffix=suffix,
+                    on_usage=on_usage,
+                )
+            except Exception:
+                logger.exception("AI summary generation failed (attempt %s)", attempt + 1)
+                continue
 
-        if validate_summary_numbers(
-            _blocks_to_validation_text(blocks),
-            findings,
-            context_text=" ".join(dataset_titles) + " " + (user_intent or ""),
-        ):
-            return text, "anthropic", blocks
-        logger.warning("AI summary failed validation; using template fallback")
+            if validate_summary_numbers(_blocks_to_validation_text(blocks), findings, context_text=context_text):
+                return text, "anthropic", blocks, None
+
+            if attempt == 0:
+                logger.warning("AI summary failed validation; retrying without digits")
+                fallback_reason = "validation_failed"
+            else:
+                logger.warning("AI summary failed validation after retry; using template fallback")
     except Exception:
         logger.exception("AI summary generation failed")
 
     blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
-    return blocks_to_plain_text(blocks), "template", blocks
+    return blocks_to_plain_text(blocks), "template", blocks, fallback_reason
 
 
 def legacy_text_to_blocks(text: str) -> list[dict[str, Any]]:

@@ -1,0 +1,121 @@
+# Canonical browse/explore themes — shared by /guided/topics, search filtering, and
+# catalog/topic_classifier.py (step 3). Keep ids stable; paths.yaml references them.
+
+topics:
+  - id: economy
+    title: Economy & growth
+    description: GDP, trade, employment, and prices
+    icon: chart
+    wb_tags:
+      - Economy & Growth
+      - Financial Sector
+      - Labor & Social Protection
+      - Trade
+      - Private Sector
+      - Public Sector
+    keywords:
+      - gdp
+      - unemployment
+      - inflation
+      - employment
+      - trade
+      - export
+      - import
+      - fiscal
+      - budget
+      - debt
+      - income
+      - wage
+      - productivity
+      - recession
+      - cpi
+      - interest rate
+
+  - id: health
+    title: Health & longevity
+    description: Life expectancy, mortality, and healthcare access
+    icon: heart
+    wb_tags:
+      - Health
+    keywords:
+      - health
+      - mortality
+      - life expectancy
+      - hospital
+      - healthcare
+      - disease
+      - immunization
+      - birth
+      - death
+      - maternal
+      - infant
+      - nutrition
+      - obesity
+      - physician
+      - medical
+
+  - id: environment
+    title: Environment & energy
+    description: Emissions, forest cover, and energy access
+    icon: leaf
+    wb_tags:
+      - Environment
+      - Climate Change
+      - Energy & Mining
+      - Agriculture & Rural Development
+    keywords:
+      - emission
+      - co2
+      - carbon
+      - climate
+      - forest
+      - energy
+      - electricity
+      - renewable
+      - fuel
+      - pollution
+      - water
+      - sanitation
+      - mining
+      - agriculture
+
+  - id: education
+    title: Education & skills
+    description: Literacy, enrollment, and internet access
+    icon: book
+    wb_tags:
+      - Education
+      - Science & Technology
+    keywords:
+      - education
+      - literacy
+      - enrollment
+      - school
+      - student
+      - teacher
+      - internet
+      - broadband
+      - ict
+      - research
+      - science
+      - university
+
+  - id: poverty
+    title: Poverty & inequality
+    description: Poverty rates and economic development
+    icon: scale
+    wb_tags:
+      - Poverty
+      - Social Protection & Labor
+      - Aid Effectiveness
+    keywords:
+      - poverty
+      - inequality
+      - gini
+      - deprivation
+      - vulnerable
+      - social protection
+      - aid
+      - development assistance
+      - remittance
+      - welfare

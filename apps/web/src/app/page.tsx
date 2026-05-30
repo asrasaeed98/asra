@@ -49,20 +49,20 @@ export default function Home() {
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:justify-center">
           <Link
-            href="/explore"
-            className="inline-block w-full max-w-xs rounded-xl bg-pink-600 px-7 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700 sm:w-auto"
-          >
-            Ask a question
-          </Link>
-          <Link
             href="/search"
-            className="inline-block w-full max-w-xs rounded-xl border border-[#ddd0c0] bg-white px-7 py-3.5 text-center text-sm font-semibold text-stone-700 transition hover:border-pink-200 hover:text-pink-700 sm:w-auto"
+            className="inline-block w-full max-w-xs rounded-xl bg-pink-600 px-7 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700 sm:w-auto"
           >
             Browse datasets
           </Link>
+          <Link
+            href="/explore"
+            className="inline-block w-full max-w-xs rounded-xl border border-[#ddd0c0] bg-white px-7 py-3.5 text-center text-sm font-semibold text-stone-700 transition hover:border-pink-200 hover:text-pink-700 sm:w-auto"
+          >
+            Ask a question
+          </Link>
         </div>
         <p className="mt-3 text-center text-xs text-stone-500">
-          Guided explore for questions · Search for technical browsing
+          Search the catalog · Or get guided suggestions from a question
         </p>
       </section>
 

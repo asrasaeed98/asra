@@ -72,12 +72,23 @@ def test_sanitize_summary_strips_markdown_title():
     assert sanitize_summary_text(raw) == "First paragraph here."
 
 
+def test_validate_allows_percent_form():
+    findings = [{"title": "Related", "value": 0.52, "n": 100, "details": {"impact": "Moderate link."}}]
+    assert validate_summary_numbers("There is a 52% association between the measures.", findings)
+
+
+def test_validate_allows_small_counts_in_context():
+    findings = [{"title": "Pattern", "n": 15, "details": {"impact": "Groups differ."}}]
+    assert validate_summary_numbers("About 20 countries had complete data.", findings, context_text="n_rows 20")
+
+
 def test_generate_without_api_key_uses_template(monkeypatch):
     monkeypatch.setattr("findings_api.analysis.ai_summary.settings.anthropic_api_key", "")
-    summary, source, blocks = generate_ai_summary(
+    summary, source, blocks, reason = generate_ai_summary(
         [{"title": "Test", "details": {"impact": "Something happened."}, "n": 10}],
         dataset_titles=["Dataset A"],
     )
     assert source == "template"
+    assert reason == "no_api_key"
     assert "Something happened" in summary
     assert any(b.get("type") == "list" for b in blocks)

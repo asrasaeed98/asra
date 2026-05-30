@@ -84,7 +84,7 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
           <p className="text-xs font-medium uppercase tracking-wide text-pink-600">
             <AnalysisTypeLabel type={finding.type} />
             {badge && (
-              <span className="ml-2 normal-case tracking-normal text-violet-700">
+              <span className="ml-2 normal-case tracking-normal text-stone-500">
                 · {badge}
               </span>
             )}
@@ -108,9 +108,7 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
                 View technical details
               </summary>
               {measureDisclosure && (
-                <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-2.5 py-2 text-xs leading-relaxed text-violet-900">
-                  {measureDisclosure}
-                </p>
+                <p className="mt-2 text-xs leading-relaxed text-stone-600">{measureDisclosure}</p>
               )}
               {technicalTitle && technicalTitle !== headline && (
                 <p className="mt-2 text-xs text-stone-500">{technicalTitle}</p>
@@ -161,7 +159,6 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
 export function DatasetDetailsPanel({
   datasets,
   glossary,
-  measureNotes = [],
 }: {
   datasets: Array<{
     title: string;
@@ -171,20 +168,10 @@ export function DatasetDetailsPanel({
     datetime_columns: string[];
   }>;
   glossary: Array<{ name: string; label: string; description?: string | null }>;
-  measureNotes?: Array<{
-    column?: string;
-    label?: string;
-    source?: string;
-    disclosure?: string;
-    ai_inferred?: string;
-  }>;
 }) {
   const glossaryByName = new Map(glossary.map((e) => [e.name.toLowerCase(), e]));
-  const notes = measureNotes.filter((n) => n.disclosure);
   const hasContent =
-    datasets.length > 0 ||
-    notes.length > 0 ||
-    glossary.some((e) => e.description || e.label !== e.name);
+    datasets.length > 0 || glossary.some((e) => e.description || e.label !== e.name);
 
   if (!hasContent) return null;
 
@@ -194,39 +181,43 @@ export function DatasetDetailsPanel({
         Fields analyzed & data dictionary
       </summary>
       <div className="mt-2 space-y-4 border-t border-[#f0e8de] pt-3">
-        {datasets.map((ds) => (
-          <div key={ds.title} className="text-xs text-stone-600">
-            <p className="font-medium text-stone-800">
-              {ds.title} ({ds.n_rows.toLocaleString()} rows)
-            </p>
-            {ds.numeric_columns.length > 0 && (
-              <FieldList label="Numeric" names={ds.numeric_columns} glossaryByName={glossaryByName} />
-            )}
-            {ds.categorical_columns.length > 0 && (
-              <FieldList label="Categories" names={ds.categorical_columns} glossaryByName={glossaryByName} />
-            )}
-            {ds.datetime_columns.length > 0 && (
-              <FieldList label="Dates" names={ds.datetime_columns} glossaryByName={glossaryByName} />
-            )}
-          </div>
-        ))}
-        {notes.length > 0 && (
-          <ul className="space-y-2">
-            {notes.map((note) => (
-              <li
-                key={`${note.column}-${note.label}`}
-                className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs leading-relaxed text-violet-900"
-              >
-                {note.disclosure}
-                {note.source === "ai_inferred" && (
-                  <span className="ml-2 rounded-full bg-violet-200/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-800">
-                    AI-inferred
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        {datasets.map((ds) => {
+          const titles = ds.title.includes(" + ")
+            ? ds.title.split(" + ").map((part) => part.trim()).filter(Boolean)
+            : [ds.title];
+          const joined = titles.length > 1;
+
+          return (
+            <div key={ds.title} className="text-xs text-stone-600">
+              {joined ? (
+                <div className="space-y-1">
+                  <p className="font-medium text-stone-800">Two datasets joined and compared</p>
+                  <ul className="list-disc space-y-0.5 pl-4 text-stone-700">
+                    {titles.map((title) => (
+                      <li key={title}>{title}</li>
+                    ))}
+                  </ul>
+                  <p className="text-stone-500">
+                    {ds.n_rows.toLocaleString()} matched rows in the combined table
+                  </p>
+                </div>
+              ) : (
+                <p className="font-medium text-stone-800">
+                  {ds.title} ({ds.n_rows.toLocaleString()} rows)
+                </p>
+              )}
+              {ds.numeric_columns.length > 0 && (
+                <FieldList label="Numeric" names={ds.numeric_columns} glossaryByName={glossaryByName} />
+              )}
+              {ds.categorical_columns.length > 0 && (
+                <FieldList label="Categories" names={ds.categorical_columns} glossaryByName={glossaryByName} />
+              )}
+              {ds.datetime_columns.length > 0 && (
+                <FieldList label="Dates" names={ds.datetime_columns} glossaryByName={glossaryByName} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </details>
   );

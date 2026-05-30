@@ -2,7 +2,7 @@
 
 import duckdb
 
-from findings_api.analysis.charts import charts_for_findings
+from findings_api.analysis.charts import _prioritize_chart_findings, charts_for_findings
 from findings_api.analysis.types import Finding
 
 
@@ -23,6 +23,25 @@ def _finding(**kwargs) -> Finding:
     }
     defaults.update(kwargs)
     return Finding(**defaults)
+
+
+def test_prioritize_joined_correlation_chart():
+    joined = _finding(
+        id="f_joined",
+        type="spearman_correlation",
+        columns=["x", "y"],
+        sql="SELECT 1",
+        datasets=["wb:a+wb:b"],
+    )
+    solo = _finding(
+        id="f_solo",
+        type="time_trend",
+        columns=["x", "time"],
+        sql="SELECT 1",
+        datasets=["wb:a"],
+    )
+    ordered = _prioritize_chart_findings([solo, joined], joined=True)
+    assert ordered[0].id == "f_joined"
 
 
 def test_scatter_chart_embeds_data():

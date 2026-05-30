@@ -17,6 +17,7 @@ const PHASES = [
 function phaseIndexFromStatus(status: SessionStatus): number {
   if (status.status === "complete") return 4;
   const map: Record<string, number> = {
+    pending: 0,
     ingest: 0,
     ready: 1,
     prepare: 1,
@@ -49,10 +50,6 @@ function AnalyzeContent() {
         setPhaseIndex(idx);
         setPhaseMessage(s.message ?? PHASES[idx]?.label ?? PHASES[0].label);
 
-        if (s.status === "ready" && s.phase === "ready") {
-          router.replace(`/review?session=${sessionId}`);
-          return;
-        }
         if (s.status === "failed") {
           setError(s.message ?? "Analysis failed");
           return;

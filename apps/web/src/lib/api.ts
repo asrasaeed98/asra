@@ -17,6 +17,7 @@ export type CatalogResult = {
   resource_url?: string;
   byte_size?: number;
   row_count_hint?: number | null;
+  columns?: { name: string; type?: string }[];
   relevance_score?: number | null;
   quality_score?: number | null;
   match_reason?: string | null;
@@ -24,6 +25,7 @@ export type CatalogResult = {
 
 export type SearchResponse = {
   query: string;
+  topic?: string | null;
   page: number;
   limit: number;
   total: number;
@@ -62,6 +64,8 @@ export type SessionResults = {
     display_limit?: number;
     display_count?: number;
     total_findings: number;
+    methods_run?: string[];
+    ml_enabled?: boolean;
     datasets: Array<{
       title: string;
       n_rows: number;
@@ -84,6 +88,7 @@ export type SessionResults = {
     | { type: "list"; items: string[] }
   > | null;
   ai_summary_source?: "anthropic" | "template" | "unavailable" | string | null;
+  ai_summary_fallback_reason?: string | null;
   chat?: ChatState;
   message?: string;
 };
@@ -238,10 +243,29 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function searchDatasets(q: string, portal?: string, page = 1) {
+export type SearchTopic = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  dataset_count: number;
+  path_count: number;
+};
+
+export function getSearchTopics() {
+  return apiGet<SearchTopic[]>("/search/topics");
+}
+
+export function searchDatasets(q: string, portal?: string, page = 1, topic?: string) {
   const params = new URLSearchParams({ q, page: String(page) });
   if (portal) params.set("portal", portal);
+  if (topic) params.set("topic", topic);
   return apiGet<SearchResponse>(`/search?${params}`);
+}
+
+export function getDatasetsBatch(resourceIds: string[]) {
+  const params = new URLSearchParams({ ids: resourceIds.join(",") });
+  return apiGet<CatalogResult[]>(`/datasets/batch?${params}`);
 }
 
 export function createSession(resourceIds: string[], userIntent?: string, mlEnabled = true) {

@@ -53,12 +53,25 @@ def _session_detail(db: Session, session: AnalysisSession) -> SessionDetail:
     )
 
 
-def _schedule_ingest(background_tasks: BackgroundTasks, session_id: str) -> None:
+
+def _schedule_full_run(background_tasks: BackgroundTasks, session_id: str) -> None:
+    """Download datasets then run analysis in one background job."""
+
     def _run():
         factory = get_session_factory()
         db = factory()
         try:
             asyncio.run(run_ingest(db, session_id))
+            session = db.get(AnalysisSession, session_id)
+            if not session or session.status != "ready":
+                return
+            session.status = "analyzing"
+            session.phase = "prepare"
+            session.message = "Preparing analysis…"
+            session.percent = 5
+            db.add(session)
+            db.commit()
+            asyncio.run(run_analysis_pipeline(db, session_id))
         finally:
             db.close()
 
@@ -68,7 +81,6 @@ def _schedule_ingest(background_tasks: BackgroundTasks, session_id: str) -> None
 @router.post("", response_model=SessionResponse)
 def create_session(
     body: CreateSessionRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     for rid in body.resource_ids:
@@ -79,9 +91,9 @@ def create_session(
     session_id = str(uuid4())
     session = AnalysisSession(
         id=session_id,
-        status="ingesting",
-        phase="ingest",
-        message="Starting download…",
+        status="created",
+        phase="pending",
+        message="Ready to start — confirm settings and run analysis.",
         percent=0,
         resource_ids=body.resource_ids,
         user_intent=body.user_intent,
@@ -89,7 +101,6 @@ def create_session(
     )
     db.add(session)
     db.commit()
-    _schedule_ingest(background_tasks, session_id)
     return SessionResponse(id=session_id, status=session.status, resource_ids=body.resource_ids)
 
 
@@ -110,7 +121,7 @@ def update_session(
     session = db.get(AnalysisSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if session.status not in ("ready", "created"):
+    if session.status not in ("created", "ready"):
         raise HTTPException(status_code=409, detail=f"Cannot update session in status {session.status}")
 
     config = dict(session.config or {})
@@ -161,6 +172,15 @@ def run_analysis(
     session = db.get(AnalysisSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session.status == "created":
+        session.status = "ingesting"
+        session.phase = "ingest"
+        session.message = "Starting download…"
+        session.percent = 0
+        db.add(session)
+        db.commit()
+        _schedule_full_run(background_tasks, session_id)
+        return {"session_id": session_id, "status": session.status, "phase": session.phase}
     if session.status != "ready":
         raise HTTPException(status_code=409, detail="Session not ready for analysis")
     session.status = "analyzing"
@@ -244,6 +264,7 @@ def session_results(session_id: str, db: Session = Depends(get_db)):
         "ai_summary": results.get("ai_summary"),
         "ai_summary_blocks": results.get("ai_summary_blocks"),
         "ai_summary_source": results.get("ai_summary_source"),
+        "ai_summary_fallback_reason": results.get("ai_summary_fallback_reason"),
         "chat": _chat_state(preview, db),
         "message": session.message,
         "preview": session.preview,

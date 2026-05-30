@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import replace
 
@@ -11,12 +12,15 @@ from findings_api.analysis.charts import charts_for_findings
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
 from findings_api.analysis.join import (
     assess_join_on,
+    auto_join_selection,
     build_joined_table_on,
     normalize_join_on,
+    suggest_joins,
 )
 from findings_api.analysis.ml.clustering import run_ml_suite
 from findings_api.analysis.profile import profile_table
 from findings_api.analysis.labels import glossary_for_columns
+from findings_api.analysis.methods import summarize_methods_run
 from findings_api.analysis.narrative import enrich_findings
 from findings_api.analysis.ranker import DISPLAY_TOP, apply_ranking_context, rank_findings, select_display_findings
 from findings_api.analysis.selector import plans_for_table
@@ -169,6 +173,23 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 )
             )
 
+        auto_joined = False
+        if len(tables) == 2 and not join_pairs:
+            ingest_profiles: list[dict] = []
+            for table, _, _ in tables:
+                for item in datasets:
+                    item_table = item.get("analysis_table") or item.get("raw_table")
+                    if item_table == table:
+                        ingest_profiles.append(item)
+                        break
+            if len(ingest_profiles) == 2:
+                suggestions = suggest_joins(conn, ingest_profiles)
+                picked = auto_join_selection(suggestions)
+                if picked:
+                    join_pairs = list(zip(picked.left_keys, picked.right_keys, strict=True))
+                    auto_joined = True
+                    logger.info("Auto-selected join for analysis: %s", picked.label)
+
         table_meta = {table: (rid, title) for table, rid, title in tables}
         target_table = tables[0][0]
         join_report = None
@@ -228,6 +249,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     "matched_rows": matched,
                     "overlap_left_pct": round(overlap_left, 4),
                     "overlap_right_pct": round(overlap_right, 4),
+                    "auto": auto_joined,
                 }
             else:
                 join_report = {
@@ -237,6 +259,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     "overlap_left_pct": round(overlap_left, 4),
                     "overlap_right_pct": round(overlap_right, 4),
                     "warning": warning,
+                    "auto": auto_joined,
                 }
 
         analyze_tables = (
@@ -343,7 +366,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             ranked_all = enrich_findings(rank_findings(ranked_all))
             display = select_display_findings(ranked_all, min(DISPLAY_TOP, len(ranked_all)))
 
-        charts = charts_for_findings(conn, display)
+        charts = charts_for_findings(conn, display, joined=joined_ok)
         statistical_hits = len([f for f in ranked_all if f.type != "descriptive"])
         notes = analysis_notes(
             profiles,
@@ -364,10 +387,12 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         _set_progress(db, session, phase="finalize", message="Writing summary", percent=92)
         display_dicts = [f.to_dict() for f in display]
         dataset_titles = [p.title for p in profiles]
-        ai_summary, ai_summary_source, ai_summary_blocks = generate_ai_summary(
+        facts_context = json.dumps([p.facts for p in profiles if p.facts], default=str)
+        ai_summary, ai_summary_source, ai_summary_blocks, ai_summary_fallback_reason = generate_ai_summary(
             display_dicts,
             user_intent=session.user_intent,
             dataset_titles=dataset_titles,
+            extra_context=facts_context,
             allow_ai=not is_over_budget(db),
             on_usage=lambda model, tin, tout: record_usage(db, model, tin, tout),
         )
@@ -390,6 +415,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             "ai_summary": ai_summary,
             "ai_summary_blocks": ai_summary_blocks,
             "ai_summary_source": ai_summary_source,
+            "ai_summary_fallback_reason": ai_summary_fallback_reason,
             "dataset_facts": [p.facts for p in profiles if p.facts],
             "analysis_report": {
                 "tests_planned": tests_planned,
@@ -397,6 +423,12 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 "display_limit": DISPLAY_TOP,
                 "display_count": len(display),
                 "total_findings": len(ranked_all),
+                "methods_run": summarize_methods_run(
+                    profiles,
+                    ml_enabled=ml_enabled,
+                    joined_ok=joined_ok,
+                ),
+                "ml_enabled": ml_enabled,
                 "datasets": [
                     {
                         "title": p.title,

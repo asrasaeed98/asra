@@ -1,27 +1,6 @@
 # Curated explore paths — smoke-test each pair before adding (ingest → join → analyze).
 # Used by GET /guided/suggest and to boost search ranking for featured resources.
-
-topics:
-  - id: economy
-    title: Economy & growth
-    description: GDP, trade, employment, and prices
-    icon: chart
-  - id: health
-    title: Health & longevity
-    description: Life expectancy, mortality, and healthcare access
-    icon: heart
-  - id: environment
-    title: Environment & energy
-    description: Emissions, forest cover, and energy access
-    icon: leaf
-  - id: education
-    title: Education & skills
-    description: Literacy, enrollment, and internet access
-    icon: book
-  - id: poverty
-    title: Poverty & inequality
-    description: Poverty rates and economic development
-    icon: scale
+# Theme definitions live in catalog/topics.yaml (referenced by path.topic ids).
 
 paths:
   - id: wealth-health

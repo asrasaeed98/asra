@@ -66,17 +66,12 @@ def test_run_analysis_pipeline(mock_fetch, client, tmp_path, monkeypatch):
 
     resp = client.post("/sessions", json={"resource_ids": ["test:1"], "ml_enabled": False})
     session_id = resp.json()["id"]
-
-    import time
-
-    for _ in range(80):
-        status = client.get(f"/sessions/{session_id}/status").json()
-        if status["status"] in ("ready", "failed"):
-            break
-        time.sleep(0.05)
+    assert resp.json()["status"] == "created"
 
     run = client.post(f"/sessions/{session_id}/run")
     assert run.status_code == 200
+
+    import time
 
     for _ in range(120):
         status = client.get(f"/sessions/{session_id}/status").json()

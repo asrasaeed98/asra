@@ -4,13 +4,59 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  getGuidedTopics,
+  getSearchTopics,
   searchDatasets,
   triggerCatalogSync,
   type CatalogResult,
   type SearchResponse,
+  type SearchTopic,
 } from "@/lib/api";
 import { LoadingBlock } from "@/components/LoadingBlock";
 import { formatRowCount, portalLabel } from "@/lib/catalog-labels";
+
+function topicTitle(topics: SearchTopic[], id: string) {
+  return topics.find((t) => t.id === id)?.title ?? id.replace(/-/g, " ");
+}
+
+function isBrowseLanding(query: string, theme: string, source: string) {
+  return !query.trim() && !theme && !source;
+}
+
+function TopicBrowseGrid({
+  topics,
+  onSelect,
+}: {
+  topics: SearchTopic[];
+  onSelect: (topicId: string) => void;
+}) {
+  return (
+    <section className="mt-8">
+      <h2 className="text-lg font-semibold text-stone-800">Browse by theme</h2>
+      <p className="mt-1 text-sm text-stone-500">
+        Pick a topic to explore datasets, or search by keyword above.
+      </p>
+      <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+        {topics.map((t) => (
+          <li key={t.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(t.id)}
+              className="flex h-full w-full flex-col rounded-2xl border border-[#e8ddd0] bg-white p-4 text-left shadow-sm transition hover:border-pink-200 hover:shadow-md"
+            >
+              <span className="text-sm font-semibold text-stone-800">{t.title}</span>
+              <span className="mt-1 line-clamp-2 text-xs text-stone-500">{t.description}</span>
+              <span className="mt-3 text-xs font-medium text-pink-600">
+                {t.dataset_count.toLocaleString()} dataset{t.dataset_count === 1 ? "" : "s"}
+                {t.path_count > 0 && ` · ${t.path_count} curated example${t.path_count === 1 ? "" : "s"}`}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function ResultCard({
   item,
@@ -102,6 +148,9 @@ function SearchContent() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [portal, setPortal] = useState(() => params.get("portal") ?? "");
+  const [topic, setTopic] = useState(() => params.get("topic") ?? "");
+  const [topics, setTopics] = useState<SearchTopic[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(true);
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -111,17 +160,34 @@ function SearchContent() {
   );
   const idsFromUrl = params.get("ids") ?? "";
 
-  // Only sync selection from URL when ids param changes (e.g. back from review),
-  // not when portal or other query params change.
+  useEffect(() => {
+    setTopicsLoading(true);
+    void getSearchTopics()
+      .catch(async () => {
+        const guided = await getGuidedTopics().catch(() => []);
+        return guided.map((t) => ({
+          ...t,
+          dataset_count: 0,
+          path_count: t.path_count,
+        }));
+      })
+      .then(setTopics)
+      .finally(() => setTopicsLoading(false));
+  }, []);
+
   useEffect(() => {
     setSelected(idsFromUrl.split(",").filter(Boolean).slice(0, 2));
   }, [idsFromUrl]);
 
-  function updateSearchUrl(patch: { portal?: string; ids?: string[] }) {
+  function updateSearchUrl(patch: { portal?: string; topic?: string; ids?: string[] }) {
     const urlParams = new URLSearchParams(params.toString());
     if ("portal" in patch) {
       if (patch.portal) urlParams.set("portal", patch.portal);
       else urlParams.delete("portal");
+    }
+    if ("topic" in patch) {
+      if (patch.topic) urlParams.set("topic", patch.topic);
+      else urlParams.delete("topic");
     }
     if ("ids" in patch) {
       if (patch.ids?.length) urlParams.set("ids", patch.ids.join(","));
@@ -131,18 +197,21 @@ function SearchContent() {
     router.replace(qs ? `/search?${qs}` : "/search", { scroll: false });
   }
 
-  async function runSearch(query = q, source = portal) {
+  async function runSearch(query = q, source = portal, theme = topic) {
     setLoading(true);
     setError(null);
     try {
-      const res = await searchDatasets(query, source || undefined);
+      const res = await searchDatasets(query, source || undefined, 1, theme || undefined);
       setData(res);
       if (res.total === 0) {
-        const sourceLabel = source ? portalLabel(source) : "any source";
+        const filters: string[] = [];
+        if (theme) filters.push(topicTitle(topics, theme));
+        if (source) filters.push(portalLabel(source));
+        const filterLabel = filters.length ? filters.join(" · ") : "the catalog";
         setError(
           query.trim()
-            ? `No datasets match "${query}" in ${sourceLabel}. Try another term or source.`
-            : `No datasets in ${sourceLabel}. Try another source or load the catalog.`,
+            ? `No datasets match "${query}" in ${filterLabel}. Try another term or filter.`
+            : `No datasets in ${filterLabel}. Try another theme or source.`,
         );
       }
     } catch (e) {
@@ -161,14 +230,27 @@ function SearchContent() {
 
   function onPortalChange(nextPortal: string) {
     setPortal(nextPortal);
-    updateSearchUrl({ portal: nextPortal, ids: selected });
+    updateSearchUrl({ portal: nextPortal, topic, ids: selected });
+  }
+
+  function onTopicChange(nextTopic: string) {
+    setTopic(nextTopic);
+    updateSearchUrl({ portal, topic: nextTopic, ids: selected });
   }
 
   useEffect(() => {
-    void runSearch(q, portal);
-    // Re-search when the source filter changes; q updates go through form submit.
+    if (isBrowseLanding(q, topic, portal)) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    void runSearch(q, portal, topic);
+    // Re-search when filters change; q updates go through form submit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portal]);
+  }, [portal, topic]);
+
+  const showTopicBrowse = isBrowseLanding(q, topic, portal);
 
   async function onLoadCatalog() {
     setSyncing(true);
@@ -193,57 +275,91 @@ function SearchContent() {
     else if (selected.length >= 2) return;
     else next = [...selected, id];
     setSelected(next);
-    updateSearchUrl({ portal, ids: next });
+    updateSearchUrl({ portal, topic, ids: next });
   }
 
   function resetSelection() {
     setSelected([]);
-    updateSearchUrl({ portal, ids: [] });
+    updateSearchUrl({ portal, topic, ids: [] });
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
       <h1 className="text-xl font-semibold text-stone-800 sm:text-2xl">Search datasets</h1>
       <p className="mt-1 text-sm text-stone-600">
-        Sources show license and attribution. Results rank by match quality — best fits first.{" "}
+        Browse by theme or keyword. Results rank by match quality — best fits first.{" "}
         <Link href="/explore" className="font-medium text-pink-600 hover:text-pink-700">
           Not sure? Try guided explore
         </Link>
       </p>
-      <form onSubmit={onSearch} className="mt-6 flex flex-col gap-3 sm:flex-row">
+      <form onSubmit={onSearch} className="mt-6 space-y-3">
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="e.g. GDP, unemployment, population"
-          className="flex-1 rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-100"
+          className="w-full rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-100"
         />
-        <select
-          value={portal}
-          onChange={(e) => onPortalChange(e.target.value)}
-          className="rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-700"
-        >
-          <option value="">All sources</option>
-          <option value="data_gov">data.gov only</option>
-          <option value="world_bank">World Bank only</option>
-          <option value="fred">FRED only</option>
-        </select>
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-pink-700"
-        >
-          {loading ? "Searching…" : "Search"}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-stone-400">
+              Theme
+            </span>
+            <select
+              value={topic}
+              onChange={(e) => onTopicChange(e.target.value)}
+              className="rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-100"
+            >
+              <option value="">All themes</option>
+              {topics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-stone-400">
+              Source
+            </span>
+            <select
+              value={portal}
+              onChange={(e) => onPortalChange(e.target.value)}
+              className="rounded-xl border border-[#ddd0c0] bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-100"
+            >
+              <option value="">All sources</option>
+              <option value="data_gov">data.gov only</option>
+              <option value="world_bank">World Bank only</option>
+              <option value="fred">FRED only</option>
+            </select>
+          </label>
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-pink-700 sm:mb-0"
+          >
+            {loading ? "Searching…" : "Search"}
+          </button>
+        </div>
       </form>
 
-      {loading && !data && (
+      {loading && !data && !showTopicBrowse && (
         <div className="mt-8">
           <LoadingBlock message="Searching the catalog…" />
         </div>
       )}
 
-      {error && (
+      {showTopicBrowse && !topicsLoading && topics.length > 0 && (
+        <TopicBrowseGrid topics={topics} onSelect={onTopicChange} />
+      )}
+
+      {showTopicBrowse && topicsLoading && (
+        <div className="mt-8">
+          <LoadingBlock message="Loading themes…" />
+        </div>
+      )}
+
+      {error && !showTopicBrowse && (
         <div className="mt-4 rounded-xl border border-[#e8ddd0] bg-[#f5efe6] px-3 py-2 text-sm text-stone-700">
           <p>{error}</p>
           {(data?.total === 0 || !data) && (
@@ -259,7 +375,7 @@ function SearchContent() {
         </div>
       )}
 
-      {data && (
+      {data && !showTopicBrowse && (
         <>
           {loading && (
             <p className="mt-4 text-xs text-stone-500">Updating results…</p>
@@ -268,6 +384,7 @@ function SearchContent() {
             <p className="text-sm text-stone-500">
               Selected: {selected.length} / 2
               {data && ` · ${data.total} result(s)`}
+              {topic ? ` · ${topicTitle(topics, topic)}` : ""}
               {portal ? ` · ${portalLabel(portal)} only` : ""}
             </p>
             {selected.length > 0 && (

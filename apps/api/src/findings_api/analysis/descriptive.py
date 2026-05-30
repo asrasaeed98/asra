@@ -291,24 +291,8 @@ def analysis_notes(
         notes.append(f"Produced {total_findings} descriptive summary result(s) from the loaded sample.")
 
     for profile in profiles:
-        parts: list[str] = []
-        if profile.numeric:
-            parts.append(f"numeric: {_column_list(profile.numeric)}")
-        if profile.categorical:
-            parts.append(f"categories: {_column_list(profile.categorical)}")
-        if profile.datetime:
-            parts.append(f"dates: {_column_list(profile.datetime)}")
-
-        field_summary = "; ".join(parts) if parts else "no typed columns detected"
-        notes.append(f"{profile.title} — {profile.n_rows:,} rows analyzed ({field_summary}).")
-
         if profile.n_rows < 20:
             notes.append(f"{profile.title} — small sample ({profile.n_rows} rows); many tests need more data.")
-
-        for col, ctx in profile.measure_contexts.items():
-            disclosure = ctx.get("disclosure")
-            if disclosure:
-                notes.append(f"{profile.title} — {disclosure}")
 
         has_date = bool(profile.datetime) or any(
             c.name.lower() in ("date", "year") for c in profile.columns

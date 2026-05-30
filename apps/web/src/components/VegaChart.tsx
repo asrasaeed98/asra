@@ -7,11 +7,25 @@ type VegaChartProps = {
   title: string;
 };
 
+type VegaView = {
+  resize: () => VegaView;
+  run: () => void;
+  finalize: () => void;
+};
+
 function hasChartValues(spec: Record<string, unknown>): boolean {
   const data = spec.data;
   if (!data || typeof data !== "object") return false;
   const values = (data as { values?: unknown[] }).values;
   return Array.isArray(values) && values.length > 0;
+}
+
+function responsiveSpec(spec: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...spec,
+    width: "container",
+    autosize: { type: "fit-x", contains: "padding" },
+  };
 }
 
 export function VegaChart({ spec, title }: VegaChartProps) {
@@ -21,18 +35,30 @@ export function VegaChart({ spec, title }: VegaChartProps) {
     const el = ref.current;
     if (!el || !hasChartValues(spec)) return;
 
-    let view: { finalize: () => void } | undefined;
+    let view: VegaView | undefined;
+    let observer: ResizeObserver | undefined;
+    let cancelled = false;
 
     void import("vega-embed").then(({ default: embed }) =>
-      embed(el, spec, {
+      embed(el, responsiveSpec(spec), {
         actions: { export: true, source: false, compiled: false, editor: false },
         renderer: "svg",
       }).then((result) => {
-        view = result.view;
+        if (cancelled) {
+          result.view.finalize();
+          return;
+        }
+        view = result.view as VegaView;
+        observer = new ResizeObserver(() => {
+          void view?.resize().run();
+        });
+        observer.observe(el);
       }),
     );
 
     return () => {
+      cancelled = true;
+      observer?.disconnect();
       view?.finalize();
     };
   }, [spec]);
@@ -44,7 +70,7 @@ export function VegaChart({ spec, title }: VegaChartProps) {
   return (
     <div
       ref={ref}
-      className="w-full overflow-x-auto [&_svg]:mx-auto"
+      className="w-full min-w-0 overflow-x-auto [&_svg]:mx-auto [&_svg]:max-w-full [&_svg]:h-auto"
       role="img"
       aria-label={title}
     />

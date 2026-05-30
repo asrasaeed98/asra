@@ -118,3 +118,130 @@ def test_search_returns_quality_scores(client):
     data = resp.json()
     if data["results"]:
         assert data["results"][0].get("quality_score") is not None
+
+
+def test_search_topic_filter(client):
+    from findings_api.db import get_session_factory
+
+    factory = get_session_factory()
+    s = factory()
+    s.add(
+        CatalogResource(
+            id="wb:SP.DYN.LE00.IN",
+            portal="world_bank",
+            title="Life expectancy at birth, total (years)",
+            description="Health indicator",
+            organization="WB",
+            tags=["Health"],
+            format="JSON_WORLDBANK",
+            license_normalized="CC_BY",
+            license_raw="CC-BY",
+            license_display="CC BY",
+            attribution_required=True,
+            attribution_text="WB",
+            publisher="WB",
+            source_url="https://data.worldbank.org/indicator/SP.DYN.LE00.IN",
+            resource_url="https://api.worldbank.org/v2/country/all/indicator/SP.DYN.LE00.IN?format=json",
+            search_text="life expectancy health mortality",
+            ingestible=True,
+            row_count_hint=20000,
+        )
+    )
+    s.add(
+        CatalogResource(
+            id="wb:NY.GDP.PCAP.CD",
+            portal="world_bank",
+            title="GDP per capita (current US$)",
+            description="Economy indicator",
+            organization="WB",
+            tags=["Economy & Growth"],
+            format="JSON_WORLDBANK",
+            license_normalized="CC_BY",
+            license_raw="CC-BY",
+            license_display="CC BY",
+            attribution_required=True,
+            attribution_text="WB",
+            publisher="WB",
+            source_url="https://data.worldbank.org/indicator/NY.GDP.PCAP.CD",
+            resource_url="https://api.worldbank.org/v2/country/all/indicator/NY.GDP.PCAP.CD?format=json",
+            search_text="gdp per capita economy",
+            ingestible=True,
+            row_count_hint=20000,
+        )
+    )
+    s.commit()
+    s.close()
+
+    resp = client.get("/search?topic=health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["topic"] == "health"
+    assert data["total"] >= 1
+    ids = {r["id"] for r in data["results"]}
+    assert "wb:SP.DYN.LE00.IN" in ids
+    assert "wb:NY.GDP.PCAP.CD" not in ids
+
+
+def test_search_unknown_topic_returns_400(client):
+    resp = client.get("/search?topic=not-a-theme")
+    assert resp.status_code == 400
+
+
+def test_search_topics_returns_counts(client):
+    from findings_api.db import get_session_factory
+
+    factory = get_session_factory()
+    s = factory()
+    s.add(
+        CatalogResource(
+            id="wb:SP.DYN.LE00.IN",
+            portal="world_bank",
+            title="Life expectancy at birth, total (years)",
+            description="Health indicator",
+            organization="WB",
+            tags=["Health"],
+            format="JSON_WORLDBANK",
+            license_normalized="CC_BY",
+            license_raw="CC-BY",
+            license_display="CC BY",
+            attribution_required=True,
+            attribution_text="WB",
+            publisher="WB",
+            source_url="https://example.com/le",
+            resource_url="https://example.com/le.json",
+            search_text="life expectancy health",
+            ingestible=True,
+        )
+    )
+    s.add(
+        CatalogResource(
+            id="wb:NY.GDP.PCAP.CD",
+            portal="world_bank",
+            title="GDP per capita (current US$)",
+            description="Economy indicator",
+            organization="WB",
+            tags=["Economy & Growth"],
+            format="JSON_WORLDBANK",
+            license_normalized="CC_BY",
+            license_raw="CC-BY",
+            license_display="CC BY",
+            attribution_required=True,
+            attribution_text="WB",
+            publisher="WB",
+            source_url="https://example.com/gdp",
+            resource_url="https://example.com/gdp.json",
+            search_text="gdp per capita economy",
+            ingestible=True,
+        )
+    )
+    s.commit()
+    s.close()
+
+    resp = client.get("/search/topics")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 5
+    health = next(t for t in data if t["id"] == "health")
+    economy = next(t for t in data if t["id"] == "economy")
+    assert health["dataset_count"] >= 1
+    assert economy["dataset_count"] >= 1

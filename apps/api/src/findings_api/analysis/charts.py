@@ -32,7 +32,6 @@ _GEO_CODE_FIELDS = frozenset(
 )
 _GEO_NAME_FIELDS = frozenset({"country", "country_name", "state", "state_name", "region"})
 
-_VEGA_WIDTH = 420
 _VEGA_HEIGHT = 260
 
 
@@ -64,12 +63,18 @@ def _fetch_rows(conn, sql: str, *, limit: int) -> list[dict[str, Any]]:
     return _serialize_rows(df)
 
 
-def _base_spec(*, mark: str | dict[str, Any], encoding: dict[str, Any]) -> dict[str, Any]:
+def _base_spec(
+    *,
+    mark: str | dict[str, Any],
+    encoding: dict[str, Any],
+    height: int | dict[str, Any] | None = None,
+) -> dict[str, Any]:
     mark_obj: str | dict[str, Any] = mark
     return {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-        "width": _VEGA_WIDTH,
-        "height": _VEGA_HEIGHT,
+        "width": "container",
+        "autosize": {"type": "fit-x", "contains": "padding"},
+        "height": height if height is not None else _VEGA_HEIGHT,
         "mark": mark_obj,
         "encoding": encoding,
         "config": {
@@ -201,7 +206,12 @@ def _build_bar_chart_spec(
         if aggregate_mean:
             encoding["y"]["aggregate"] = "mean"
 
-    spec = _base_spec(mark={"type": "bar", "color": "#e879a9"}, encoding=encoding)
+    bar_height: int | dict[str, Any] | None = {"step": 28} if horizontal else None
+    spec = _base_spec(
+        mark={"type": "bar", "color": "#e879a9"},
+        encoding=encoding,
+        height=bar_height,
+    )
     spec["data"] = {"values": trimmed_values}
     return ChartSpec(
         id=f"chart_{finding_id}",
@@ -333,11 +343,51 @@ def _chart_for_finding(conn, finding: Finding, *, all_findings: list[Finding]) -
     return None
 
 
-def charts_for_findings(conn, findings: list[Finding]) -> list[ChartSpec]:
+def _is_joined_finding(finding: Finding) -> bool:
+    return any("+" in dataset for dataset in finding.datasets)
+
+
+def _prioritize_chart_findings(findings: list[Finding], *, joined: bool) -> list[Finding]:
+    """Prefer cross-dataset (joined) findings and one scatter when datasets were combined."""
+    if not joined or len(findings) <= 1:
+        return findings
+
+    joined_only = [f for f in findings if _is_joined_finding(f)]
+    if not joined_only:
+        return findings
+
+    ordered: list[Finding] = []
+    seen: set[str] = set()
+
+    for finding in joined_only:
+        if finding.type == "spearman_correlation" and finding.id not in seen:
+            ordered.append(finding)
+            seen.add(finding.id)
+            break
+
+    for finding in joined_only:
+        if finding.id in seen:
+            continue
+        ordered.append(finding)
+        seen.add(finding.id)
+
+    for finding in findings:
+        if finding.id not in seen:
+            ordered.append(finding)
+    return ordered
+
+
+def charts_for_findings(
+    conn,
+    findings: list[Finding],
+    *,
+    joined: bool = False,
+) -> list[ChartSpec]:
     """Build up to six Vega-Lite charts with embedded data for display findings."""
     charts: list[ChartSpec] = []
-    for finding in findings[:6]:
-        chart = _chart_for_finding(conn, finding, all_findings=findings)
+    candidates = _prioritize_chart_findings(findings, joined=joined)
+    for finding in candidates[:6]:
+        chart = _chart_for_finding(conn, finding, all_findings=candidates)
         if chart is not None:
             charts.append(chart)
     return charts

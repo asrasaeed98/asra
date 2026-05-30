@@ -1,16 +1,20 @@
-"""Load curated explore paths and topics from paths.yaml."""
+"""Load curated explore paths from paths.yaml; themes from catalog/topics.yaml."""
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 import yaml
 
+from findings_api.catalog.topic_config import CatalogTopic, load_topics
+
 _PATHS_FILE = Path(__file__).resolve().parent / "paths.yaml"
+
+# Backwards-compatible alias used in guided router/tests.
+GuidedTopic = CatalogTopic
 
 _STOPWORDS = frozenset(
     {
@@ -51,14 +55,6 @@ _STOPWORDS = frozenset(
 
 
 @dataclass(frozen=True)
-class GuidedTopic:
-    id: str
-    title: str
-    description: str
-    icon: str = "chart"
-
-
-@dataclass(frozen=True)
 class GuidedPath:
     id: str
     title: str
@@ -82,17 +78,8 @@ def tokenize(text: str) -> list[str]:
 
 
 @lru_cache(maxsize=1)
-def load_guided_config() -> tuple[tuple[GuidedTopic, ...], tuple[GuidedPath, ...]]:
+def load_paths() -> tuple[GuidedPath, ...]:
     data = yaml.safe_load(_PATHS_FILE.read_text(encoding="utf-8")) or {}
-    topics = tuple(
-        GuidedTopic(
-            id=str(t["id"]),
-            title=str(t["title"]),
-            description=str(t.get("description") or ""),
-            icon=str(t.get("icon") or "chart"),
-        )
-        for t in data.get("topics") or []
-    )
     paths: list[GuidedPath] = []
     for p in data.get("paths") or []:
         join_hint: list[tuple[str, str]] = []
@@ -116,25 +103,27 @@ def load_guided_config() -> tuple[tuple[GuidedTopic, ...], tuple[GuidedPath, ...
                 why=str(p.get("why") or ""),
             )
         )
-    return topics, tuple(paths)
+    return tuple(paths)
+
+
+def load_guided_config() -> tuple[tuple[CatalogTopic, ...], tuple[GuidedPath, ...]]:
+    return load_topics(), load_paths()
 
 
 def all_featured_resource_ids() -> frozenset[str]:
-    _, paths = load_guided_config()
     ids: set[str] = set()
-    for path in paths:
+    for path in load_paths():
         ids.update(path.resource_ids)
     return frozenset(ids)
 
 
 def paths_for_topic(topic_id: str) -> list[GuidedPath]:
-    _, paths = load_guided_config()
-    return [p for p in paths if p.topic == topic_id]
+    return [p for p in load_paths() if p.topic == topic_id]
 
 
 def match_paths(query: str, *, topic: str | None = None, limit: int = 5) -> list[tuple[GuidedPath, float]]:
     """Score curated paths against a question or topic filter."""
-    _, paths = load_guided_config()
+    paths = load_paths()
     q = (query or "").strip().lower()
     tokens = tokenize(q)
 
@@ -170,8 +159,7 @@ def _quality_weight(quality: str) -> float:
 
 
 def path_by_id(path_id: str) -> GuidedPath | None:
-    _, paths = load_guided_config()
-    for path in paths:
+    for path in load_paths():
         if path.id == path_id:
             return path
     return None

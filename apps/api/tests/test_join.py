@@ -96,6 +96,39 @@ def test_suggest_joins_ranks_composite_over_weak_single():
     assert suggestions[0].matched_rows >= 8
 
 
+def test_auto_join_selection_prefers_recommended():
+    from findings_api.analysis.join import JoinSuggestion, auto_join_selection
+
+    suggestions = [
+        JoinSuggestion(
+            keys=["year"],
+            left_keys=["year"],
+            right_keys=["year"],
+            label="year",
+            matched_rows=5,
+            overlap_left_pct=0.5,
+            overlap_right_pct=0.5,
+            score=0.6,
+            ok=False,
+        ),
+        JoinSuggestion(
+            keys=["country", "year"],
+            left_keys=["country", "year"],
+            right_keys=["country", "year"],
+            label="country + year",
+            matched_rows=20,
+            overlap_left_pct=0.95,
+            overlap_right_pct=0.95,
+            score=0.95,
+            ok=True,
+            auto_recommended=True,
+        ),
+    ]
+    picked = auto_join_selection(suggestions)
+    assert picked is not None
+    assert picked.label == "country + year"
+
+
 def test_safe_join_columns_filters_unsafe_shared_names():
     conn = duckdb.connect()
     profiles = _country_year_profiles(conn)

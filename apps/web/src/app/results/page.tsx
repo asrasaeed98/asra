@@ -11,6 +11,21 @@ import { VegaChart } from "@/components/VegaChart";
 import { getSessionResults, type Finding, type SessionResults } from "@/lib/api";
 import { formatSummaryBlocks } from "@/lib/summary-format";
 
+function summaryFallbackNote(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case "validation_failed":
+      return "AI draft included figures we could not verify — showing a template summary instead.";
+    case "api_error":
+      return "AI summary unavailable — showing a template summary instead.";
+    case "budget_exhausted":
+      return "Monthly AI budget reached — showing a template summary instead.";
+    case "no_api_key":
+      return "AI summary not configured — showing a template summary instead.";
+    default:
+      return null;
+  }
+}
+
 function analysisReportSummary(
   report: NonNullable<SessionResults["analysis_report"]>,
 ): string[] {
@@ -18,33 +33,53 @@ function analysisReportSummary(
   const rows = datasets.reduce((sum, d) => sum + (d.n_rows || 0), 0);
   const sig = report.statistical_findings ?? report.total_findings ?? 0;
   const planned = report.tests_planned ?? 0;
-  const titles = datasets.map((d) => d.title).filter(Boolean);
-  const joined = titles.some((t) => t.includes(" + "));
   const rowsStr = rows.toLocaleString();
   const lines: string[] = [];
 
   if (planned > 0) {
     const analyses = planned === 1 ? "analysis" : "analyses";
     const patterns =
-      sig === 1 ? "1 statistically meaningful pattern" : `${sig} statistically meaningful patterns`;
+      sig === 1 ? "1 pattern worth highlighting" : `${sig} patterns worth highlighting`;
     lines.push(
       sig > 0
-        ? `We ran ${planned} ${analyses} on ${rowsStr} rows and found ${patterns}, shown as the result cards below. Each is unlikely to be due to chance (p < 0.05).`
-        : `We ran ${planned} ${analyses} on ${rowsStr} rows but found no statistically significant patterns.`,
+        ? `We ran ${planned} ${analyses} across ${rowsStr} rows and found ${patterns} in the results below. Each passed a significance check (p-value under 0.05) — in plain terms, that pattern would be unlikely if the data were just random noise.`
+        : `We ran ${planned} ${analyses} across ${rowsStr} rows but did not find patterns that cleared our significance bar.`,
     );
   } else if ((report.total_findings ?? 0) > 0) {
     const n = report.total_findings ?? 0;
     lines.push(`We summarized ${rowsStr} rows of data (${n} descriptive result${n === 1 ? "" : "s"}).`);
   }
 
-  if (titles.length) {
-    lines.push(
-      joined
-        ? `Data analyzed: ${titles.join("; ")} — two datasets joined and compared.`
-        : `Data analyzed: ${titles.join("; ")}.`,
-    );
-  }
   return lines;
+}
+
+function formatJoinDetail(joinReport: Record<string, unknown> | null | undefined): string | null {
+  if (!joinReport) return null;
+  const joinOn = joinReport.join_on as Array<{ left?: string; right?: string }> | undefined;
+  if (!joinOn?.length) return null;
+  const keys = joinOn.map((pair) => {
+    const left = pair.left ?? "";
+    const right = pair.right ?? "";
+    return left && left === right ? left : `${left} ↔ ${right}`;
+  });
+  const warning = typeof joinReport.warning === "string" ? joinReport.warning : null;
+  if (warning) {
+    return `Join on ${keys.join(" and ")} was not used: ${warning}`;
+  }
+  const matched = joinReport.matched_rows;
+  const auto = joinReport.auto ? " Auto-detected from shared columns." : "";
+  const matchText =
+    typeof matched === "number" ? ` ${matched.toLocaleString()} rows matched.` : "";
+  return `Datasets joined on ${keys.join(" and ")}.${matchText}${auto}`;
+}
+
+function filterTechnicalNotes(notes: string[]): string[] {
+  return notes.filter((note) => {
+    if (note.includes(" rows analyzed (")) return false;
+    if (note.includes("The field `")) return false;
+    if (note.startsWith("Planned ") && note.includes("statistical test")) return false;
+    return true;
+  });
 }
 
 function resolveDisplayFindings(data: SessionResults): { top: Finding[]; rest: Finding[] } {
@@ -169,6 +204,9 @@ function ResultsContent() {
   const hasDescriptiveOnly = allFindings.length > 0 && statisticalCount === 0;
   const visible = showAll ? allFindings : top;
   const hiddenCount = rest.length;
+  const summaryFallback = summaryFallbackNote(data.ai_summary_fallback_reason);
+  const joinDetail = formatJoinDetail(data.join_report);
+  const technicalNotes = report ? filterTechnicalNotes(report.notes) : [];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
@@ -188,12 +226,50 @@ function ResultsContent() {
           )}
         </div>
         <KeyFindingsContent blocks={summaryBlocks} />
+        {summaryFallback && (
+          <p className="mt-2 text-xs text-amber-700">{summaryFallback}</p>
+        )}
         <p className="mt-3 text-xs text-stone-500">
           Interpretive summary from your top results. Detailed result cards below are authoritative.
         </p>
       </section>
 
-      {/* 2. Key results (computed cards + visuals — the evidence) */}
+      {/* 2. Analysis report */}
+      {report && (
+        <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5">
+          <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
+          <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-stone-700">
+            {analysisReportSummary(report).map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+          {report.methods_run && report.methods_run.length > 0 && (
+            <p className="mt-3 text-sm text-stone-600">
+              <span className="font-medium text-stone-800">Analyses run: </span>
+              {report.methods_run.join(" · ")}
+            </p>
+          )}
+          <DatasetDetailsPanel
+            datasets={report.datasets}
+            glossary={data.column_glossary ?? []}
+          />
+          {(joinDetail || technicalNotes.length > 0) && (
+            <details className="mt-3 text-xs">
+              <summary className="cursor-pointer font-medium text-stone-500 hover:text-stone-700">
+                Technical details
+              </summary>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-relaxed text-stone-500">
+                {joinDetail && <li>{joinDetail}</li>}
+                {technicalNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
+
+      {/* 3. Key results (computed cards + visuals — the evidence) */}
       <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5" id="key-results">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-stone-800">Key results</h2>
@@ -261,13 +337,18 @@ function ResultsContent() {
           <p className="mt-1 text-xs text-stone-500">
             Visual summaries linked to key findings ({data.charts.length} chart
             {data.charts.length === 1 ? "" : "s"}).
+            {data.join_report && !data.join_report.warning && data.charts.some((c) => c.type === "scatter")
+              ? " Scatter charts show both measures on the same joined rows."
+              : null}
           </p>
           <div className="mt-4 grid gap-6 lg:grid-cols-2">
             {data.charts.map((chart) => (
               <article
                 key={chart.id}
                 id={`chart-${chart.finding_id}`}
-                className="rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4"
+                className={`rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4 ${
+                  chart.type === "scatter" ? "lg:col-span-2" : ""
+                }`}
               >
                 <h3 className="text-sm font-medium text-stone-800">{chart.title}</h3>
                 <p className="mt-0.5 text-xs capitalize text-stone-500">{chart.type} chart</p>
@@ -282,35 +363,6 @@ function ResultsContent() {
 
       {/* 3. Grounded chat (after the evidence, so questions are informed) */}
       <ChatPanel sessionId={sessionId} initial={data.chat} />
-
-      {/* 4. Analysis report / technical details (collapsed depth) */}
-      {report && (
-        <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5">
-          <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
-          <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-stone-700">
-            {analysisReportSummary(report).map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-          </div>
-          <DatasetDetailsPanel
-            datasets={report.datasets}
-            glossary={data.column_glossary ?? []}
-            measureNotes={report.measure_notes ?? []}
-          />
-          {report.notes.length > 0 && (
-            <details className="mt-3 text-xs">
-              <summary className="cursor-pointer font-medium text-stone-500 hover:text-stone-700">
-                Technical details
-              </summary>
-              <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-relaxed text-stone-500">
-                {report.notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </section>
-      )}
 
       <footer className="mt-8 border-t border-[#e8ddd0] pt-4 text-xs text-stone-400">
         <p>Session {sessionId}</p>

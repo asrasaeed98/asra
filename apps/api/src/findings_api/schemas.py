@@ -20,9 +20,19 @@ class CatalogResult(BaseModel):
     resource_url: str | None = None
     byte_size: int | None = None
     row_count_hint: int | None = None
+    columns: list[dict] = Field(default_factory=list)
     relevance_score: float | None = None
     quality_score: float | None = None
     match_reason: str | None = None
+
+
+class SearchTopicOut(BaseModel):
+    id: str
+    title: str
+    description: str
+    icon: str = "chart"
+    dataset_count: int = 0
+    path_count: int = 0
 
 
 class GuidedTopicOut(BaseModel):
@@ -57,6 +67,7 @@ class GuidedSuggestResponse(BaseModel):
 
 class SearchResponse(BaseModel):
     query: str
+    topic: str | None = None
     page: int
     limit: int
     total: int

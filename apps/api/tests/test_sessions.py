@@ -64,21 +64,12 @@ def test_ingest_two_world_bank_datasets(mock_fetch, client, tmp_path, monkeypatc
     resp = client.post("/sessions", json={"resource_ids": ["test:1", "test:2"]})
     assert resp.status_code == 200
     session_id = resp.json()["id"]
-
-    import time
-
-    for _ in range(80):
-        status = client.get(f"/sessions/{session_id}/status").json()
-        if status["status"] in ("ready", "failed"):
-            break
-        time.sleep(0.05)
-
-    detail = client.get(f"/sessions/{session_id}").json()
-    assert detail["status"] == "ready", detail.get("error") or detail.get("message")
-    assert len(detail["preview"]["datasets"]) == 2
+    assert resp.json()["status"] == "created"
 
     run = client.post(f"/sessions/{session_id}/run")
     assert run.status_code == 200
+
+    import time
 
     for _ in range(120):
         status = client.get(f"/sessions/{session_id}/status").json()
@@ -86,7 +77,9 @@ def test_ingest_two_world_bank_datasets(mock_fetch, client, tmp_path, monkeypatc
             break
         time.sleep(0.05)
 
-    assert client.get(f"/sessions/{session_id}/status").json()["status"] == "complete"
+    detail = client.get(f"/sessions/{session_id}").json()
+    assert detail["status"] == "complete", detail.get("error") or detail.get("message")
+    assert len(detail["preview"]["datasets"]) == 2
 
 
 @patch("findings_api.ingest.pipeline.fetch_resource_bytes", new_callable=AsyncMock)
@@ -103,18 +96,7 @@ def test_create_session_and_ingest(mock_fetch, client, tmp_path, monkeypatch):
     )
     assert resp.status_code == 200
     session_id = resp.json()["id"]
-
-    import time
-
-    for _ in range(50):
-        status = client.get(f"/sessions/{session_id}/status").json()
-        if status["status"] in ("ready", "failed"):
-            break
-        time.sleep(0.1)
-
-    detail = client.get(f"/sessions/{session_id}").json()
-    assert detail["status"] == "ready"
-    assert detail["preview"]["datasets"][0]["row_count"] == 25
+    assert resp.json()["status"] == "created"
 
     patch_resp = client.patch(
         f"/sessions/{session_id}",
@@ -125,7 +107,8 @@ def test_create_session_and_ingest(mock_fetch, client, tmp_path, monkeypatch):
 
     run = client.post(f"/sessions/{session_id}/run")
     assert run.status_code == 200
-    assert run.json()["phase"] == "prepare"
+
+    import time
 
     for _ in range(120):
         status = client.get(f"/sessions/{session_id}/status").json()
@@ -133,11 +116,22 @@ def test_create_session_and_ingest(mock_fetch, client, tmp_path, monkeypatch):
             break
         time.sleep(0.05)
 
-    assert client.get(f"/sessions/{session_id}/status").json()["status"] == "complete"
+    detail = client.get(f"/sessions/{session_id}").json()
+    assert detail["status"] == "complete", detail.get("error") or detail.get("message")
+    assert detail["preview"]["datasets"][0]["row_count"] == 25
 
 
 def test_session_not_found(client):
     assert client.get("/sessions/nope/status").status_code == 404
+
+
+def test_datasets_batch_for_review(client):
+    resp = client.get("/datasets/batch?ids=test:1")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["id"] == "test:1"
+    assert data[0]["title"]
 
 
 def test_compute_analysis_n():
