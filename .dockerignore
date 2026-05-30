@@ -1,0 +1,10 @@
+.git
+.env
+**/.env
+**/.venv
+**/node_modules
+apps/web
+**/__pycache__
+**/*.db
+**/session_data
+.cursor

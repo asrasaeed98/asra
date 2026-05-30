@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,16 @@ class Settings(BaseSettings):
     )
 
     database_url: str = f"sqlite:///{_DEFAULT_DB}"
+
+    @field_validator("database_url")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        if value.startswith("postgresql://"):
+            return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+        if value.startswith("postgres://"):
+            return "postgresql+psycopg://" + value.removeprefix("postgres://")
+        return value
+
     redis_url: str = "redis://localhost:6379/0"
     anthropic_api_key: str = ""
     anthropic_model_summary: str = "claude-haiku-4-5"

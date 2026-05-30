@@ -10,5 +10,8 @@
     "grow:catalog": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli grow",
     "build:web": "npm run build --prefix apps/web",
     "test:api": "cd apps/api && pytest"
+  },
+  "devDependencies": {
+    "@railway/cli": "^4.66.0"
   }
 }
