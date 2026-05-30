@@ -62,12 +62,12 @@ function resolveDisplayFindings(data: SessionResults): { top: Finding[]; rest: F
 
 function ResultsSkeleton({ message, percent }: { message: string; percent?: number }) {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 space-y-6">
-      <section className="rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-5">
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:py-10">
+      <section className="rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-pink-700">Key findings</h2>
         <LoadingBlock message={message} minHeight="min-h-[180px]" percent={percent} />
       </section>
-      <section className="rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm animate-pulse">
+      <section className="rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5 animate-pulse">
         <div className="h-4 w-32 rounded bg-[#e8ddd0]" />
         <div className="mt-3 h-3 w-full rounded bg-[#f0e8de]" />
         <div className="mt-2 h-3 w-2/3 rounded bg-[#f0e8de]" />
@@ -171,9 +171,9 @@ function ResultsContent() {
   const hiddenCount = rest.length;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
       {/* 1. Key findings (AI summary) */}
-      <section className="rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-5">
+      <section className="rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-semibold text-pink-700">Key findings</h2>
           {data.ai_summary_source === "anthropic" && (
@@ -194,7 +194,7 @@ function ResultsContent() {
       </section>
 
       {/* 2. Key results (computed cards + visuals — the evidence) */}
-      <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm" id="key-results">
+      <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5" id="key-results">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-stone-800">Key results</h2>
           {!showAll && hiddenCount > 0 && (
@@ -256,7 +256,7 @@ function ResultsContent() {
       </section>
 
       {data.charts.length > 0 && (
-        <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
+        <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-semibold text-stone-800">Charts</h2>
           <p className="mt-1 text-xs text-stone-500">
             Visual summaries linked to key findings ({data.charts.length} chart
@@ -285,7 +285,7 @@ function ResultsContent() {
 
       {/* 4. Analysis report / technical details (collapsed depth) */}
       {report && (
-        <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-5 shadow-sm">
+        <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
           <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-stone-700">
             {analysisReportSummary(report).map((line) => (

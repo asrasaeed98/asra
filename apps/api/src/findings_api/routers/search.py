@@ -2,14 +2,23 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from findings_api.catalog.search_rank import rank_catalog_rows
 from findings_api.db import get_db
 from findings_api.models import CatalogResource
 from findings_api.schemas import CatalogResult, SearchResponse
 
 router = APIRouter(prefix="/search", tags=["search"])
 
+_SEARCH_POOL = 500
 
-def _to_result(row: CatalogResource) -> CatalogResult:
+
+def _to_result(
+    row: CatalogResource,
+    *,
+    relevance_score: float | None = None,
+    quality_score: float | None = None,
+    match_reason: str | None = None,
+) -> CatalogResult:
     return CatalogResult(
         id=row.id,
         portal=row.portal,
@@ -27,6 +36,9 @@ def _to_result(row: CatalogResource) -> CatalogResult:
         resource_url=row.resource_url,
         byte_size=row.byte_size,
         row_count_hint=row.row_count_hint,
+        relevance_score=relevance_score,
+        quality_score=quality_score,
+        match_reason=match_reason,
     )
 
 
@@ -38,26 +50,38 @@ def search(
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    query = q.strip().lower()
+    query = q.strip()
     stmt = select(CatalogResource).where(CatalogResource.ingestible.is_(True))
     if portal:
         stmt = stmt.where(CatalogResource.portal == portal)
-    if query:
-        tokens = [t for t in query.split() if len(t) > 1]
-        if tokens:
-            clauses = [CatalogResource.search_text.contains(t) for t in tokens]
-            stmt = stmt.where(or_(*clauses))
-        else:
-            stmt = stmt.where(CatalogResource.search_text.contains(query))
 
-    total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    tokens = [t for t in query.lower().split() if len(t) > 1]
+    if tokens:
+        clauses = [CatalogResource.search_text.contains(t) for t in tokens]
+        stmt = stmt.where(or_(*clauses))
+    elif query:
+        stmt = stmt.where(CatalogResource.search_text.contains(query.lower()))
+
+    pool = db.execute(stmt.limit(_SEARCH_POOL)).scalars().all()
+    ranked = rank_catalog_rows(list(pool), query)
+    total = len(ranked)
+
     offset = (page - 1) * limit
-    rows = db.execute(stmt.order_by(CatalogResource.title).offset(offset).limit(limit)).scalars().all()
+    page_slice = ranked[offset : offset + limit]
+    results = [
+        _to_result(
+            row,
+            relevance_score=round(combined, 4) if query else None,
+            quality_score=round(quality, 4),
+            match_reason=why,
+        )
+        for row, combined, quality, why in page_slice
+    ]
 
     return SearchResponse(
         query=q,
         page=page,
         limit=limit,
         total=int(total),
-        results=[_to_result(r) for r in rows],
+        results=results,
     )

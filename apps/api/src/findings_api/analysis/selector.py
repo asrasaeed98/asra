@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from findings_api.analysis.profile import (
+    is_geo_column,
     is_panel_table,
     preferred_geo_column,
     preferred_measure_column,
@@ -49,13 +50,14 @@ def _dedupe_geo_columns(categorical: list[str]) -> list[str]:
     return [c for c in categorical if c not in drop]
 
 
-def plans_for_table(profile: TableProfile) -> list[TestPlan]:
+def plans_for_table(profile: TableProfile, *, joined: bool = False) -> list[TestPlan]:
     plans: list[TestPlan] = []
     numeric = profile.numeric
     categorical = _dedupe_geo_columns(profile.categorical)
     datetime_cols = profile.datetime
 
     panel = is_panel_table(profile)
+    cross_measure = joined and len(numeric) >= 2
 
     if len(numeric) >= 2:
         plans.append(
@@ -65,10 +67,16 @@ def plans_for_table(profile: TableProfile) -> list[TestPlan]:
                 resource_id=profile.resource_id,
                 title=profile.title,
                 columns=numeric[:12],
+                extra={"primary": cross_measure} if cross_measure else None,
             )
         )
 
-    for cat in categorical[:6]:
+    group_cats = categorical[:6]
+    if cross_measure:
+        # Joined multi-measure tables: country-level bars are tautological vs correlation.
+        group_cats = [c for c in group_cats if not is_geo_column(c)]
+
+    for cat in group_cats:
         for num in numeric[:8]:
             plans.append(
                 TestPlan(
@@ -116,7 +124,7 @@ def plans_for_table(profile: TableProfile) -> list[TestPlan]:
                     )
                 )
 
-    if panel:
+    if panel and not cross_measure:
         measure = preferred_measure_column(profile)
         geo = preferred_geo_column(profile)
         if measure and geo:

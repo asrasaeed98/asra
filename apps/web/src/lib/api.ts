@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 export type CatalogResult = {
   id: string;
@@ -17,6 +17,9 @@ export type CatalogResult = {
   resource_url?: string;
   byte_size?: number;
   row_count_hint?: number | null;
+  relevance_score?: number | null;
+  quality_score?: number | null;
+  match_reason?: string | null;
 };
 
 export type SearchResponse = {
@@ -170,6 +173,15 @@ export type SessionDetail = {
   catalogs: CatalogResult[];
 };
 
+function networkErrorMessage(path: string): string {
+  return (
+    `Could not reach the API at ${API_BASE}${path}. ` +
+    "This is usually not an API rate limit — check that the API is running on port 8000, " +
+    "open the app at http://127.0.0.1:3000 (not only localhost), and if you're on a phone " +
+    "use your Mac's IP for both the site and NEXT_PUBLIC_API_URL in apps/web/.env.local."
+  );
+}
+
 export async function apiGet<T>(path: string, timeoutMs = 30_000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -184,6 +196,9 @@ export async function apiGet<T>(path: string, timeoutMs = 30_000): Promise<T> {
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new Error("Request timed out — the API may be busy. Try again in a moment.");
     }
+    if (err instanceof TypeError) {
+      throw new Error(networkErrorMessage(path));
+    }
     throw err;
   } finally {
     clearTimeout(timer);
@@ -191,12 +206,20 @@ export async function apiGet<T>(path: string, timeoutMs = 30_000): Promise<T> {
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(networkErrorMessage(path));
+    }
+    throw err;
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || `API ${path}: ${res.status}`);
@@ -271,4 +294,54 @@ export async function triggerCatalogSync(): Promise<{
   const res = await fetch(`${API_BASE}/admin/sync`, { method: "POST" });
   if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
   return res.json();
+}
+
+export type GuidedTopic = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  path_count: number;
+};
+
+export type GuidedPathPair = {
+  path_id: string;
+  title: string;
+  topic: string;
+  quality: string;
+  description: string;
+  user_intent: string;
+  resource_ids: string[];
+  join_hint: JoinColumnPair[];
+  why: string;
+  datasets: CatalogResult[];
+};
+
+export type GuidedSuggestResponse = {
+  query: string;
+  topic: string | null;
+  paraphrase: string | null;
+  recommended_pairs: GuidedPathPair[];
+  datasets: CatalogResult[];
+  fallback_message: string | null;
+};
+
+export function getGuidedTopics() {
+  return apiGet<GuidedTopic[]>("/guided/topics");
+}
+
+export function getGuidedPaths(topic?: string) {
+  const params = topic ? `?topic=${encodeURIComponent(topic)}` : "";
+  return apiGet<GuidedPathPair[]>(`/guided/paths${params}`);
+}
+
+export function guidedSuggest(q: string, topic?: string) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (topic) params.set("topic", topic);
+  return apiGet<GuidedSuggestResponse>(`/guided/suggest?${params}`);
+}
+
+export function getGuidedPath(pathId: string) {
+  return apiGet<GuidedPathPair>(`/guided/paths/${encodeURIComponent(pathId)}`);
 }

@@ -1,0 +1,223 @@
+# Curated explore paths — smoke-test each pair before adding (ingest → join → analyze).
+# Used by GET /guided/suggest and to boost search ranking for featured resources.
+
+topics:
+  - id: economy
+    title: Economy & growth
+    description: GDP, trade, employment, and prices
+    icon: chart
+  - id: health
+    title: Health & longevity
+    description: Life expectancy, mortality, and healthcare access
+    icon: heart
+  - id: environment
+    title: Environment & energy
+    description: Emissions, forest cover, and energy access
+    icon: leaf
+  - id: education
+    title: Education & skills
+    description: Literacy, enrollment, and internet access
+    icon: book
+  - id: poverty
+    title: Poverty & inequality
+    description: Poverty rates and economic development
+    icon: scale
+
+paths:
+  - id: wealth-health
+    title: Wealth and health across countries
+    topic: health
+    quality: verified
+    description: Compare GDP per capita with life expectancy by country and year — a classic development economics relationship.
+    user_intent: Explore whether wealthier countries tend to have longer life expectancy.
+    question_patterns:
+      - life expectancy
+      - wealth and health
+      - gdp and health
+      - rich countries live longer
+      - income and longevity
+    resource_ids:
+      - wb:NY.GDP.PCAP.CD
+      - wb:SP.DYN.LE00.IN
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: Standard World Bank country-year panels; joins cleanly on country and year.
+
+  - id: energy-access
+    title: Electricity and clean cooking access
+    topic: environment
+    quality: verified
+    description: Countries with more electricity access often have higher clean-fuel adoption for cooking.
+    user_intent: Explore how electricity access relates to clean cooking fuel access across countries.
+    question_patterns:
+      - electricity
+      - clean fuels
+      - energy access
+      - cooking fuel
+    resource_ids:
+      - wb:EG.ELC.ACCS.ZS
+      - wb:EG.CFT.ACCS.ZS
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: Both are World Bank country-year percentage indicators with matching geography.
+
+  - id: poverty-gdp
+    title: Poverty and GDP per capita
+    topic: poverty
+    quality: verified
+    description: See how extreme poverty rates relate to national income levels.
+    user_intent: Explore the relationship between GDP per capita and extreme poverty rates.
+    question_patterns:
+      - poverty
+      - poor countries
+      - extreme poverty
+      - gdp and poverty
+    resource_ids:
+      - wb:NY.GDP.PCAP.CD
+      - wb:SI.POV.DDAY
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: Macro indicators on the same country-year panel.
+
+  - id: literacy-internet
+    title: Literacy and internet use
+    topic: education
+    quality: verified
+    description: Compare adult literacy with the share of people using the internet.
+    user_intent: Explore whether countries with higher literacy also have more internet users.
+    question_patterns:
+      - literacy
+      - internet
+      - education and technology
+      - digital divide
+    resource_ids:
+      - wb:SE.ADT.LITR.ZS
+      - wb:IT.NET.USER.ZS
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: World Bank education and connectivity indicators by country and year.
+
+  - id: unemployment-growth
+    title: Unemployment and GDP growth
+    topic: economy
+    quality: verified
+    description: See how unemployment rates move with annual GDP growth across countries.
+    user_intent: Explore how unemployment relates to economic growth.
+    question_patterns:
+      - unemployment
+      - jobless
+      - gdp growth
+      - recession
+    resource_ids:
+      - wb:SL.UEM.TOTL.ZS
+      - wb:NY.GDP.MKTP.KD.ZG
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: Standard macro indicators on shared country-year keys.
+
+  - id: emissions-wealth
+    title: CO₂ emissions and wealth
+    topic: environment
+    quality: verified
+    description: Compare per-capita CO₂ emissions with GDP per capita by country.
+    user_intent: Explore how economic wealth relates to per-capita carbon emissions.
+    question_patterns:
+      - co2
+      - carbon emissions
+      - climate and gdp
+      - pollution and wealth
+    resource_ids:
+      - wb:EN.ATM.CO2E.PC
+      - wb:NY.GDP.PCAP.CD
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: Environment and income indicators on country-year panels.
+
+  - id: water-sanitation
+    title: Drinking water and sanitation
+    topic: health
+    quality: good
+    description: Basic drinking water access vs improved sanitation access by country.
+    user_intent: Explore how drinking water and sanitation access relate across countries.
+    question_patterns:
+      - drinking water
+      - sanitation
+      - clean water
+    resource_ids:
+      - wb:SH.H2O.BASW.ZS
+      - wb:SH.STA.BASS.ZS
+    join_hint:
+      - { left: countryiso3code, right: countryiso3code }
+      - { left: date, right: date }
+    why: WHO/World Bank health access indicators with shared geography.
+
+  - id: us-health-quality
+    title: US state health care quality
+    topic: health
+    quality: good
+    description: Single-dataset view of child and adult health care quality measures by state.
+    user_intent: Explore how health care quality varies across US states.
+    question_patterns:
+      - state health
+      - healthcare quality
+      - medicaid quality
+      - us states health
+    resource_ids:
+      - datagov:2019-child-and-adult-health-care-quality-measures-quality
+    join_hint: []
+    why: State-level CMS quality data — best as a single-dataset group comparison.
+
+  - id: us-unemployment
+    title: US unemployment rate over time
+    topic: economy
+    quality: verified
+    description: National unemployment rate from FRED — trend and time-series patterns.
+    user_intent: Explore how US unemployment has changed over time.
+    question_patterns:
+      - us unemployment
+      - unemployment rate
+      - jobs america
+      - labor market
+    resource_ids:
+      - fred:UNRATE
+    join_hint: []
+    why: Authoritative US macro series; strong for time-trend analysis.
+
+  - id: us-inflation
+    title: US inflation (CPI)
+    topic: economy
+    quality: verified
+    description: Consumer price index for all urban consumers — inflation over time.
+    user_intent: Explore US inflation trends over time.
+    question_patterns:
+      - inflation
+      - cpi
+      - consumer prices
+      - cost of living
+    resource_ids:
+      - fred:CPIAUCSL
+    join_hint: []
+    why: Standard FRED CPI series for US time-series analysis.
+
+  - id: us-gdp-unemployment
+    title: US GDP and unemployment
+    topic: economy
+    quality: good
+    description: Pair US gross domestic product with the unemployment rate by date.
+    user_intent: Explore how US GDP and unemployment move together over time.
+    question_patterns:
+      - gdp unemployment
+      - economy and jobs
+      - recession indicators
+    resource_ids:
+      - fred:GDP
+      - fred:UNRATE
+    join_hint:
+      - { left: date, right: date }
+    why: Both are US national FRED series — join on observation date only.

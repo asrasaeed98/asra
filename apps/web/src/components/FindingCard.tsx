@@ -63,6 +63,7 @@ function InfoIcon() {
 export function FindingCard({ finding, compact = false, rank }: Props) {
   const headline = detailStr(finding, "headline") ?? finding.title;
   const impact = detailStr(finding, "impact");
+  const badge = detailStr(finding, "badge");
   const technicalTitle = detailStr(finding, "technical_title");
   const confidence = confidenceLabel(finding.p_value);
   const isStatistical = finding.type !== "descriptive" && finding.p_value != null;
@@ -82,6 +83,11 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase tracking-wide text-pink-600">
             <AnalysisTypeLabel type={finding.type} />
+            {badge && (
+              <span className="ml-2 normal-case tracking-normal text-violet-700">
+                · {badge}
+              </span>
+            )}
           </p>
           <h3 className="mt-1 text-sm font-semibold leading-snug text-stone-800">{headline}</h3>
 
@@ -109,7 +115,7 @@ export function FindingCard({ finding, compact = false, rank }: Props) {
               {technicalTitle && technicalTitle !== headline && (
                 <p className="mt-2 text-xs text-stone-500">{technicalTitle}</p>
               )}
-              <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-[#f0e8de] pt-3 text-xs text-stone-600">
+              <dl className="mt-3 grid grid-cols-1 gap-2 border-t border-[#f0e8de] pt-3 text-xs text-stone-600 sm:grid-cols-2">
                 <div>
                   <dt className="text-stone-400">Sample size (n)</dt>
                   <dd>{finding.n.toLocaleString()} rows</dd>

@@ -247,6 +247,11 @@ def is_panel_table(profile: TableProfile) -> bool:
     return has_time and has_measure and has_geo
 
 
+def is_geo_column(name: str) -> bool:
+    """True when a column name is a geographic grouping field."""
+    return name.lower() in _GEO_COLUMN_NAMES
+
+
 def preferred_geo_column(profile: TableProfile) -> str | None:
     for pref in ("country", "countryiso3code", "state", "fips", "region"):
         if pref in profile.categorical:

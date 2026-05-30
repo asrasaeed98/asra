@@ -36,3 +36,22 @@ def test_no_group_comparison_on_country_code_when_country_present():
     group_cats = {p.columns[1] for p in plans if p.kind == "group_comparison"}
     assert "country" in group_cats
     assert "countryiso3code" not in group_cats
+
+
+def test_joined_multi_measure_skips_geo_group_comparisons():
+    profile = TableProfile(
+        table="analysis_joined",
+        resource_id="a+b",
+        title="GDP + Life expectancy",
+        n_rows=17000,
+        columns=[
+            _col("country", "categorical", 200),
+            _col("date", "datetime", 65),
+            _col("gdp_per_capita", "numeric", 200),
+            _col("life_expectancy", "numeric", 200),
+        ],
+    )
+    plans = plans_for_table(profile, joined=True)
+    assert any(p.kind == "correlation" for p in plans)
+    group_cats = {p.columns[1] for p in plans if p.kind == "group_comparison"}
+    assert "country" not in group_cats

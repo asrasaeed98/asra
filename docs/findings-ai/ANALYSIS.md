@@ -22,9 +22,11 @@ profile.py → selector.py → tests/* → runner.py → ranker.py → Finding J
 | Numeric + datetime | Trend / rolling |
 | 2 categoricals | Chi-square (or skip if cell counts too low) |
 | 2 datasets + confirmed join | Same on joined table + join_report |
-| 2 datasets, no join | Per-dataset menu; comparison only if column semantics match |
+| 2 datasets, no join | Per-dataset menu; comparison only if column semantics match (not yet implemented) |
 
 **Defaults:** Spearman when unsure; max **5–8** findings; \|r\| ≥ 0.3 and p < 0.05 (tunable).
+
+**Join improvements (backlog):** Phase 1 = deterministic geo/name normalization before join scoring; Phase 2 = curated joinable pairs + optional fuzzy geo match. See [BUILD_ORDER.md § Slice 11](./BUILD_ORDER.md#slice-11--join-hygiene-phase-15-backlog).
 
 ## ML gate
 

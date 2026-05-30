@@ -105,6 +105,15 @@ def _finding_payload(finding: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _summary_sort_key(finding: dict[str, Any]) -> tuple:
+    details = finding.get("details") or {}
+    if details.get("primary"):
+        return (0, -abs(float(finding.get("value") or 0)))
+    if finding.get("type") == "spearman_correlation":
+        return (1, -abs(float(finding.get("value") or 0)))
+    return (2, 0)
+
+
 def template_summary_blocks(
     findings: list[dict[str, Any]],
     *,
@@ -123,8 +132,15 @@ def template_summary_blocks(
             }
         ]
 
+    ordered = sorted(findings, key=_summary_sort_key)
+    primary = next((f for f in ordered if (f.get("details") or {}).get("primary")), None)
+
     intro_parts: list[str] = []
-    if dataset_titles:
+    if primary and primary.get("type") == "spearman_correlation":
+        intro_parts.append(
+            "The main result is how the two selected measures relate after joining the datasets."
+        )
+    elif dataset_titles:
         intro_parts.append(f"This summary covers {', '.join(dataset_titles[:2])}.")
     if user_intent:
         intro_parts.append(f"You asked about: {user_intent.strip()}")
@@ -133,7 +149,7 @@ def template_summary_blocks(
 
     impacts = [
         (f.get("details") or {}).get("impact") or f.get("title")
-        for f in findings[:5]
+        for f in ordered[:5]
         if (f.get("details") or {}).get("impact") or f.get("title")
     ]
 
