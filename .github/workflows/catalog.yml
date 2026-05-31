@@ -40,8 +40,8 @@ env:
   CATALOG_PROBE_BATCH_SIZE: "100"
   CATALOG_SYNC_INTERVAL_HOURS: "0"
   CATALOG_PROBE_INTERVAL_HOURS: "0"
-  NYC_SYNC_MAX_INGESTIBLE: "20"
-  NYC_SYNC_MAX_INDEXED: "0"
+  NYC_SYNC_MAX_INGESTIBLE: "50"
+  NYC_SYNC_MAX_INDEXED: "150"
 
 jobs:
   sync:
@@ -74,7 +74,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.job == 'sync-nyc'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

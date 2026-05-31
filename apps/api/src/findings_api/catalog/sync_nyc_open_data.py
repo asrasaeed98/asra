@@ -49,7 +49,21 @@ METADATA_SEARCH_QUERIES = (
     "restaurant",
     "traffic",
     "employment",
+    "health",
+    "education",
+    "transit",
+    "environment",
+    "budget",
+    "parks",
+    "business",
+    "building",
+    "violations",
+    "demographics",
+    "salary",
+    "covid",
 )
+
+DISCOVERY_PAGE_SIZE = 50
 
 SKIP_VIEW_TYPES = frozenset({"blob", "file", "filter", "href", "chart", "map"})
 
@@ -64,30 +78,38 @@ async def _fetch_view_meta(client: httpx.AsyncClient, base: str, dataset_id: str
 async def _discover_ids(client: httpx.AsyncClient, base: str, *, limit: int) -> list[str]:
     seen: set[str] = set()
     ordered: list[str] = []
+
+    def add(ds_id: str | None) -> bool:
+        if not ds_id or ds_id in seen:
+            return False
+        seen.add(ds_id)
+        ordered.append(ds_id)
+        return len(ordered) >= limit
+
     for dataset_id in CURATED_DATASET_IDS:
-        if len(ordered) >= limit:
-            break
-        if dataset_id not in seen:
-            seen.add(dataset_id)
-            ordered.append(dataset_id)
+        if add(dataset_id):
+            return ordered
 
     for q in METADATA_SEARCH_QUERIES:
-        if len(ordered) >= limit:
-            break
-        resp = await client.get(
-            f"{base.rstrip('/')}/api/views/metadata/v1",
-            params={"q": q, "$limit": min(25, limit)},
-            timeout=60.0,
-        )
-        if resp.status_code != 200:
-            continue
-        for item in resp.json():
-            if len(ordered) >= limit:
+        offset = 0
+        while len(ordered) < limit:
+            page_size = min(DISCOVERY_PAGE_SIZE, limit - len(ordered))
+            resp = await client.get(
+                f"{base.rstrip('/')}/api/views/metadata/v1",
+                params={"q": q, "limit": page_size, "offset": offset},
+                timeout=60.0,
+            )
+            if resp.status_code != 200:
                 break
-            ds_id = item.get("id")
-            if ds_id and ds_id not in seen:
-                seen.add(ds_id)
-                ordered.append(ds_id)
+            batch = resp.json()
+            if not isinstance(batch, list) or not batch:
+                break
+            for item in batch:
+                if add(item.get("id")):
+                    return ordered
+            if len(batch) < page_size:
+                break
+            offset += len(batch)
     return ordered
 
 
