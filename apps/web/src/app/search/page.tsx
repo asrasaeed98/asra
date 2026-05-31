@@ -336,7 +336,7 @@ function SearchContent() {
           <button
             type="submit"
             disabled={loading}
-            className="rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-pink-700 sm:mb-0"
+            className="rounded-xl bg-stone-800 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-stone-900 disabled:opacity-50 sm:mb-0"
           >
             {loading ? "Searching…" : "Search"}
           </button>

@@ -20,11 +20,43 @@ function hasChartValues(spec: Record<string, unknown>): boolean {
   return Array.isArray(values) && values.length > 0;
 }
 
-function responsiveSpec(spec: Record<string, unknown>): Record<string, unknown> {
+function responsiveSpec(
+  spec: Record<string, unknown>,
+  containerWidth: number,
+): Record<string, unknown> {
+  const isMobile = containerWidth > 0 && containerWidth < 640;
+  const height = spec.height;
+  const mobileHeight =
+    typeof height === "number" ? Math.max(180, Math.round(height * 0.72)) : height;
+
+  const baseConfig =
+    spec.config && typeof spec.config === "object"
+      ? (spec.config as Record<string, unknown>)
+      : {};
+  const axisConfig =
+    baseConfig.axis && typeof baseConfig.axis === "object"
+      ? (baseConfig.axis as Record<string, unknown>)
+      : {};
+
   return {
     ...spec,
     width: "container",
     autosize: { type: "fit-x", contains: "padding" },
+    ...(isMobile && typeof height === "number" ? { height: mobileHeight } : {}),
+    config: {
+      ...baseConfig,
+      axis: {
+        ...axisConfig,
+        ...(isMobile
+          ? {
+              labelFontSize: 10,
+              titleFontSize: 11,
+              labelLimit: 72,
+              titleLimit: 120,
+            }
+          : {}),
+      },
+    },
   };
 }
 
@@ -40,7 +72,7 @@ export function VegaChart({ spec, title }: VegaChartProps) {
     let cancelled = false;
 
     void import("vega-embed").then(({ default: embed }) =>
-      embed(el, responsiveSpec(spec), {
+      embed(el, responsiveSpec(spec, el.clientWidth), {
         actions: { export: true, source: false, compiled: false, editor: false },
         renderer: "svg",
       }).then((result) => {
@@ -70,7 +102,7 @@ export function VegaChart({ spec, title }: VegaChartProps) {
   return (
     <div
       ref={ref}
-      className="w-full min-w-0 overflow-x-auto [&_svg]:mx-auto [&_svg]:max-w-full [&_svg]:h-auto"
+      className="mx-auto w-full min-w-0 max-w-[18rem] overflow-x-auto sm:max-w-none [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
       role="img"
       aria-label={title}
     />

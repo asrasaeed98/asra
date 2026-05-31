@@ -334,7 +334,7 @@ function ResultsContent() {
       </section>
 
       {data.charts.length > 0 && (
-        <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5">
+        <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-3 shadow-sm sm:p-5">
           <h2 className="text-sm font-semibold text-stone-800">Charts</h2>
           <p className="mt-1 text-xs text-stone-500">
             Visual summaries linked to key findings ({data.charts.length} chart
@@ -343,16 +343,18 @@ function ResultsContent() {
               ? " Scatter charts show both measures on the same joined rows."
               : null}
           </p>
-          <div className="mt-4 flex flex-col gap-6">
+          <div className="mt-3 flex flex-col gap-4 sm:mt-4 sm:gap-6">
             {data.charts.map((chart) => (
               <article
                 key={chart.id}
                 id={`chart-${chart.finding_id}`}
-                className="rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4"
+                className="rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-3 sm:p-4"
               >
-                <h3 className="text-sm font-medium text-stone-800">{chart.title}</h3>
+                <h3 className="line-clamp-3 text-xs font-medium leading-snug text-stone-800 sm:line-clamp-none sm:text-sm">
+                  {chart.title}
+                </h3>
                 <p className="mt-0.5 text-xs capitalize text-stone-500">{chart.type} chart</p>
-                <div className="mt-3">
+                <div className="mt-2 sm:mt-3">
                   <VegaChart spec={chart.spec} title={chart.title} />
                 </div>
               </article>

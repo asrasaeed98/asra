@@ -73,16 +73,16 @@ export default function Home() {
           {APP_NAME} joins public datasets, runs real statistical tests, and returns ranked,
           plain-language answers with charts and a full analysis report.
         </p>
-        <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:justify-center">
+        <div className="mt-6 flex flex-col items-center gap-2.5 sm:mt-8 sm:flex-row sm:justify-center sm:gap-3">
           <Link
             href="/search"
-            className="inline-block w-full max-w-xs rounded-xl bg-pink-600 px-7 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700 sm:w-auto"
+            className="inline-flex w-44 items-center justify-center rounded-lg bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700 sm:w-auto sm:rounded-xl sm:px-7 sm:py-3"
           >
             Browse datasets
           </Link>
           <Link
             href="/explore"
-            className="inline-block w-full max-w-xs rounded-xl border border-[#ddd0c0] bg-white px-7 py-3.5 text-center text-sm font-semibold text-stone-700 transition hover:border-pink-200 hover:text-pink-700 sm:w-auto"
+            className="inline-flex w-44 items-center justify-center rounded-lg border border-[#ddd0c0] bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-pink-200 hover:text-pink-700 sm:w-auto sm:rounded-xl sm:px-7 sm:py-3"
           >
             Ask a question
           </Link>
@@ -156,7 +156,7 @@ export default function Home() {
             />
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm">
+          <div className="mx-auto w-full max-w-[17rem] overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm sm:max-w-none">
             <Image
               src="/home/chart-literacy-internet.png"
               alt="Scatter chart showing moderate positive association between adult literacy rate and internet usage, Spearman r = 0.63"

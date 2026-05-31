@@ -1,22 +1,49 @@
 const PROD_API = "https://asra-production.up.railway.app";
 
+function isLocalDevHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
 function resolveApiBase(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  if (process.env.VERCEL) {
-    return PROD_API;
+  const fromEnv = process.env.NEXT_PUBLIC_API_URL;
+  if (fromEnv) {
+    return fromEnv;
   }
   if (typeof window !== "undefined") {
     const { hostname } = window.location;
-    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    if (!isLocalDevHost(hostname)) {
       return PROD_API;
     }
+  } else if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    return PROD_API;
   }
   return "http://127.0.0.1:8000";
 }
 
-const API_BASE = resolveApiBase();
+function getApiBase(): string {
+  return resolveApiBase();
+}
+
+function isLocalDev(): boolean {
+  if (typeof window !== "undefined") {
+    return isLocalDevHost(window.location.hostname);
+  }
+  return process.env.NODE_ENV === "development";
+}
+
+function networkErrorMessage(path: string): string {
+  const base = getApiBase();
+  if (isLocalDev()) {
+    return (
+      `Could not reach the API at ${base}${path}. ` +
+      "Start the API on port 8000 and open the app at http://127.0.0.1:3000."
+    );
+  }
+  return (
+    `Could not reach the API at ${base}${path}. ` +
+    "Check your connection and try again. During analysis, keep this tab open — large datasets can take a few minutes."
+  );
+}
 
 export type CatalogResult = {
   id: string;
@@ -196,20 +223,11 @@ export type SessionDetail = {
   catalogs: CatalogResult[];
 };
 
-function networkErrorMessage(path: string): string {
-  return (
-    `Could not reach the API at ${API_BASE}${path}. ` +
-    "This is usually not an API rate limit — check that the API is running on port 8000, " +
-    "open the app at http://127.0.0.1:3000 (not only localhost), and if you're on a phone " +
-    "use your Mac's IP for both the site and NEXT_PUBLIC_API_URL in apps/web/.env.local."
-  );
-}
-
 export async function apiGet<T>(path: string, timeoutMs = 30_000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${getApiBase()}${path}`, {
       cache: "no-store",
       signal: controller.signal,
     });
@@ -231,7 +249,7 @@ export async function apiGet<T>(path: string, timeoutMs = 30_000): Promise<T> {
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(`${getApiBase()}${path}`, {
       method: "POST",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
@@ -251,7 +269,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -299,7 +317,7 @@ export function getSession(sessionId: string) {
 }
 
 export function getSessionStatus(sessionId: string) {
-  return apiGet<SessionStatus>(`/sessions/${sessionId}/status`);
+  return apiGet<SessionStatus>(`/sessions/${sessionId}/status`, 60_000);
 }
 
 export function updateSession(
@@ -333,7 +351,7 @@ export async function triggerCatalogSync(): Promise<{
   indexed: Record<string, number>;
   message: string;
 }> {
-  const res = await fetch(`${API_BASE}/admin/sync`, { method: "POST" });
+  const res = await fetch(`${getApiBase()}/admin/sync`, { method: "POST" });
   if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
   return res.json();
 }
