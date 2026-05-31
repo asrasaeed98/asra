@@ -36,15 +36,20 @@ function AnalyzeContent() {
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [phaseMessage, setPhaseMessage] = useState(PHASES[0].label);
   const [error, setError] = useState<string | null>(null);
+  const [pollWarning, setPollWarning] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
+    let failures = 0;
 
     async function poll() {
       try {
         const s = await getSessionStatus(sessionId);
         if (cancelled) return;
+        failures = 0;
+        setPollWarning(null);
+        setError(null);
         setStatus(s);
         const idx = phaseIndexFromStatus(s);
         setPhaseIndex(idx);
@@ -58,7 +63,17 @@ function AnalyzeContent() {
           router.push(`/results?session=${sessionId}`);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not reach API");
+        if (cancelled) return;
+        failures += 1;
+        const msg = e instanceof Error ? e.message : "Could not reach API";
+        if (failures >= 8) {
+          setError(msg);
+          setPollWarning(null);
+        } else {
+          setPollWarning(
+            "Connection hiccup — still checking progress. Large NYC datasets can take several minutes.",
+          );
+        }
       }
     }
 
@@ -107,6 +122,11 @@ function AnalyzeContent() {
       </div>
       <h1 className="text-center text-xl font-semibold text-stone-800">Analysis in progress</h1>
       <p className="mt-1 text-center text-sm text-stone-500">{timeHint}</p>
+      {pollWarning && (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900">
+          {pollWarning}
+        </p>
+      )}
       {status?.percent != null && status.percent >= 0 && (
         <div className="mx-auto mt-4 w-full max-w-xs">
           <div className="h-2 overflow-hidden rounded-full bg-[#e8ddd0]">

@@ -356,7 +356,19 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     message="Running ML models",
                     percent=72,
                 )
-                findings.extend(run_ml_suite(conn, profile, finding_offset=offset))
+
+                def _ml_progress(step: str) -> None:
+                    _set_progress(
+                        db,
+                        session,
+                        phase="analyze",
+                        message=f"Running ML — {step}",
+                        percent=72,
+                    )
+
+                findings.extend(
+                    run_ml_suite(conn, profile, finding_offset=offset, on_step=_ml_progress)
+                )
                 offset = len(findings)
 
         cross_measure_result = None

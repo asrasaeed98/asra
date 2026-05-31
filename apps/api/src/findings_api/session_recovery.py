@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from findings_api.models import AnalysisSession
 
-_STALE_AFTER = timedelta(minutes=5)
+_STALE_AFTER = timedelta(minutes=25)
 _ACTIVE = frozenset({"ingesting", "analyzing"})
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import pandas as pd
 from sklearn.cluster import DBSCAN, KMeans
@@ -16,6 +17,7 @@ from findings_api.analysis.types import Finding, TableProfile
 
 _MIN_ML_ROWS = 50
 _ML_ROW_GATE = 200
+_ML_MAX_ROWS = 8_000
 _RANDOM_STATE = 42
 _MIN_SILHOUETTE = 0.15
 _MIN_PCA_VARIANCE = 0.25
@@ -29,6 +31,8 @@ def _score(value: float, *, p_value: float | None = None) -> float:
 
 def _numeric_frame(conn, table: str, numeric_cols: list[str]) -> tuple[pd.DataFrame, list[str]]:
     df = read_table_frame(conn, table)
+    if len(df) > _ML_MAX_ROWS:
+        df = df.sample(n=_ML_MAX_ROWS, random_state=_RANDOM_STATE)
     cols = [c for c in numeric_cols if c in df.columns][:8]
     work = df[cols].apply(pd.to_numeric, errors="coerce").dropna()
     return work, cols
@@ -293,18 +297,21 @@ def run_ml_suite(
     profile: TableProfile,
     *,
     finding_offset: int = 0,
+    on_step: Callable[[str], None] | None = None,
 ) -> list[Finding]:
     """Run all ML models after primary statistical tests."""
     findings: list[Finding] = []
     offset = finding_offset
     runners = (
-        run_clustering,
-        run_dbscan,
-        run_pca_structure,
-        run_anomaly,
-        run_lof_anomaly,
+        ("clustering", run_clustering),
+        ("density scan", run_dbscan),
+        ("PCA", run_pca_structure),
+        ("anomaly detection", run_anomaly),
+        ("outlier scan", run_lof_anomaly),
     )
-    for runner in runners:
+    for label, runner in runners:
+        if on_step:
+            on_step(label)
         batch = runner(
             conn,
             profile.table,
