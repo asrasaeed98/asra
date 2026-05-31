@@ -1,5 +1,32 @@
+import Image from "next/image";
 import Link from "next/link";
 import { APP_NAME } from "@/lib/app-name";
+
+const EXAMPLE_QUESTIONS = [
+  {
+    label: "What factors are associated with life expectancy?",
+    href: "/explore?q=What+factors+are+associated+with+life+expectancy%3F",
+  },
+  {
+    label: "Does education correlate with income?",
+    href: "/explore?q=Does+education+correlate+with+income%3F",
+  },
+  {
+    label: "How does literacy relate to internet access?",
+    href: "/explore?q=How+does+literacy+relate+to+internet+access%3F",
+  },
+  {
+    label: "How have housing costs changed over time?",
+    href: "/explore?q=How+have+housing+costs+changed+over+time%3F",
+  },
+] as const;
+
+const OUTPUTS = [
+  "AI Summary of ranked key findings",
+  "Auto-generated charts linked to each finding",
+  "LLM-powered chat grounded in your results",
+  "Full analysis report with tests, p-values, and sources",
+] as const;
 
 const STEPS = [
   {
@@ -7,7 +34,8 @@ const STEPS = [
     title: "Search real, licensed datasets",
     description:
       "Browse vetted public catalogs (data.gov, FRED, World Bank) with license checks. We pull the data in and handle cleaning and joins for you.",
-    descriptionShort: "Browse data.gov, FRED, and World Bank. We handle cleaning and joins.",
+    descriptionShort:
+      "Browse data.gov, FRED, and World Bank. We handle cleaning and joins.",
   },
   {
     step: 2,
@@ -22,30 +50,28 @@ const STEPS = [
     title: "Get ranked, plain-language findings",
     description:
       "The strongest patterns first, explained simply, with every number traceable to a result, plus a grounded chat for follow-up questions.",
-    descriptionShort: "Ranked findings in plain language, plus grounded chat for follow-ups.",
+    descriptionShort:
+      "Ranked findings in plain language, plus grounded chat for follow-ups.",
   },
 ] as const;
 
 export default function Home() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:py-20">
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:py-16">
       <section className="text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.15em] text-pink-600 sm:tracking-[0.2em]">
           Insights from open data
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-800 sm:mt-4 sm:text-5xl">
-          Turn public data into{" "}
+          Ask a question.{" "}
           <span className="bg-gradient-to-r from-pink-600 to-pink-400 bg-clip-text text-transparent">
-            findings you can trust
+            Get findings you can trust
           </span>
           .
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-stone-600 sm:hidden">
-          Search public data, run real statistics, get plain-language answers you can verify.
-        </p>
-        <p className="mx-auto mt-5 hidden max-w-xl text-lg leading-relaxed text-stone-600 sm:block">
-          {APP_NAME} searches authoritative public datasets, runs real statistical tests, and
-          explains the results in plain language, with every number traceable to a computed result.
+        <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-stone-600 sm:mt-5 sm:text-lg">
+          {APP_NAME} joins public datasets, runs real statistical tests, and returns ranked,
+          plain-language answers with charts and a full analysis report.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:justify-center">
           <Link
@@ -61,12 +87,9 @@ export default function Home() {
             Ask a question
           </Link>
         </div>
-        <p className="mt-3 text-center text-xs text-stone-500">
-          Search the catalog · Or get guided suggestions from a question
-        </p>
       </section>
 
-      <section className="mt-10 sm:mt-16">
+      <section className="mt-12 sm:mt-16">
         <h2 className="text-center text-sm font-semibold uppercase tracking-wide text-stone-500">
           How it works
         </h2>
@@ -96,12 +119,83 @@ export default function Home() {
         </ol>
       </section>
 
-      <section className="mt-10 hidden rounded-2xl border border-[#e8ddd0] bg-[#faf8f5] p-6 text-center sm:mt-16 sm:block">
-        <h2 className="text-lg font-semibold text-stone-800">Built for analysts and the rest of the team</h2>
+      <section className="mt-12 rounded-3xl border border-pink-100 bg-gradient-to-b from-pink-50 to-pink-50/40 p-6 shadow-xl shadow-pink-200/50 sm:mt-16 sm:p-8">
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-[#e8ddd0] bg-white px-5 py-5 text-left shadow-sm sm:px-6 sm:py-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-pink-700">
+              Example finding
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-800 sm:text-base">
+              <span className="font-semibold">Moderate positive association</span> between adult
+              literacy and internet usage (Spearman{" "}
+              <span className="font-mono text-sm">r = 0.63</span>,{" "}
+              <span className="font-mono text-sm">n = 1,538</span>). Countries with higher literacy
+              tend to have higher internet adoption.
+            </p>
+            <p className="mt-4 text-sm font-medium text-stone-700">Every analysis includes:</p>
+            <ul className="mt-2 flex flex-col gap-1.5 text-sm text-stone-600">
+              {OUTPUTS.map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span className="text-pink-500" aria-hidden="true">
+                    ✓
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="hidden overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm md:block">
+            <Image
+              src="/home/key-findings-literacy-internet.png"
+              alt="Results page showing key findings, grounded chat, and analysis report from a literacy and internet usage analysis"
+              width={1548}
+              height={1744}
+              className="h-auto w-full"
+              priority
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm">
+            <Image
+              src="/home/chart-literacy-internet.png"
+              alt="Scatter chart showing moderate positive association between adult literacy rate and internet usage, Spearman r = 0.63"
+              width={2400}
+              height={900}
+              className="h-auto w-full"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-12 sm:mt-16">
+        <h2 className="text-center text-sm font-semibold uppercase tracking-wide text-stone-500">
+          Questions you can ask
+        </h2>
+        <p className="mx-auto mt-2 max-w-xl text-center text-sm text-stone-600">
+          Start with a question. {APP_NAME} suggests datasets and runs the analysis.
+        </p>
+        <ul className="mt-5 flex flex-wrap justify-center gap-2.5">
+          {EXAMPLE_QUESTIONS.map(({ label, href }) => (
+            <li key={href}>
+              <Link
+                href={href}
+                className="inline-block rounded-full border border-[#e8ddd0] bg-white px-4 py-2 text-sm text-stone-700 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-800"
+              >
+                {label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-12 rounded-2xl border border-[#e8ddd0] bg-[#faf8f5] p-6 text-center sm:mt-16">
+        <h2 className="text-lg font-semibold text-stone-800">
+          Built for people who need answers from public data
+        </h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-stone-600">
-          Rigorous enough for researchers, journalists, and policy work, yet readable enough for
-          anyone who just needs the answer. Plain-language summaries up top, the methodology a click
-          away.
+          Policy analysts, researchers, and journalists use {APP_NAME} when they need defensible
+          insights, not black-box summaries. Computed statistics, licensed sources, full traceability.
         </p>
       </section>
     </div>
