@@ -5,90 +5,127 @@ import { APP_NAME } from "@/lib/app-name";
 export const metadata: Metadata = {
   title: `About · ${APP_NAME}`,
   description:
-    "Why Findings exists: verifiable statistics on authoritative public data, explained in plain language.",
+    "Findings makes public data easier to understand: trusted open datasets, statistical analysis, and plain-language explanations.",
 };
-
-const AUDIENCE = [
-  {
-    title: "Analysts & researchers",
-    description: "Defensible numbers fast, without building the data pipeline yourself.",
-  },
-  {
-    title: "Journalists & policy",
-    description: "Findings you can cite, each tied to a computed result and its source dataset.",
-  },
-  {
-    title: "Everyone else",
-    description:
-      "PMs, comms, and domain experts get plain-language answers and a grounded chat, with no SQL required.",
-  },
-] as const;
 
 export default function AboutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-14 sm:py-16">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-600">About</p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-800 sm:text-4xl">
-        Statistics you can trust, from data you can cite
+        Making public data easier to understand
       </h1>
       <p className="mt-5 text-lg leading-relaxed text-stone-600">
-        {APP_NAME} turns authoritative public data into real statistical findings, explained in
-        plain language, with every number traceable back to a computed result. It exists for the
-        moments when a plausible-sounding answer isn&apos;t good enough and you need one you can
-        defend.
+        {APP_NAME} exists because public data should be useful to everyone, not just data
+        specialists. It connects to trusted open datasets, runs statistical analysis, and explains
+        the results in plain language so you can answer questions with evidence.
       </p>
 
-      <section className="mt-12">
-        <h2 className="text-xl font-semibold text-stone-800">What makes it different</h2>
-        <p className="mt-3 leading-relaxed text-stone-600">
-          The hard, risky part of data analysis isn&apos;t writing prose; it&apos;s getting
-          trustworthy data, computing rigorous statistics, and being able to show your work.{" "}
-          {APP_NAME} is built for exactly that. Every finding is a real test (a correlation, a group
-          comparison, a trend, a chi-square, or an ML pattern), reported with its sample size,
-          p-value, effect size, and the exact query that produced it. The AI summarizes and answers
-          questions about those results, but it is blocked from inventing numbers.
-        </p>
-      </section>
+      <section className="mt-10 space-y-8">
+        <div>
+          <h2 className="text-lg font-semibold text-stone-800">What you get</h2>
+          <p className="mt-2 leading-relaxed text-stone-600">
+            Choose one or two datasets and ask a question. {APP_NAME} returns ranked findings,
+            visualizations, and clear explanations you can understand without a statistics
+            background. Every finding is backed by a computed result and linked to its underlying
+            data.
+          </p>
+        </div>
 
-      <section className="mt-12">
-        <h2 className="text-xl font-semibold text-stone-800">Built to be read by anyone</h2>
-        <p className="mt-3 leading-relaxed text-stone-600">
-          Results lead with a plain-language summary and the key patterns, then let you ask follow-up
-          questions in a grounded chat. The full methodology (fields analyzed, data dictionary, and
-          test details) is always one click away, so technical and non-technical readers get what
-          they each need from the same report.
-        </p>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          {AUDIENCE.map(({ title, description }) => (
-            <div key={title} className="rounded-2xl border border-[#e8ddd0] bg-white/80 p-5 shadow-sm">
-              <h3 className="text-base font-semibold text-stone-800">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-stone-600">{description}</p>
-            </div>
-          ))}
+        <div>
+          <h2 className="text-lg font-semibold text-stone-800">Where the data comes from</h2>
+          <p className="mt-2 leading-relaxed text-stone-600">
+            {APP_NAME} uses authoritative public datasets, including{" "}
+            <a
+              href="https://catalog.data.gov"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-pink-600 hover:text-pink-700"
+            >
+              data.gov
+            </a>
+            , the{" "}
+            <a
+              href="https://fred.stlouisfed.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-pink-600 hover:text-pink-700"
+            >
+              Federal Reserve (FRED)
+            </a>
+            , the{" "}
+            <a
+              href="https://data.worldbank.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-pink-600 hover:text-pink-700"
+            >
+              World Bank
+            </a>
+            , and{" "}
+            <a
+              href="https://opendata.cityofnewyork.us/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-pink-600 hover:text-pink-700"
+            >
+              NYC Open Data
+            </a>
+            . Each dataset includes its source and licensing information. {APP_NAME} is an
+            independent project and is not affiliated with, endorsed by, or sponsored by these
+            providers.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold text-stone-800">Built by</h2>
+          <p className="mt-2 leading-relaxed text-stone-600">
+            {APP_NAME} is built by{" "}
+            <a
+              href="https://www.linkedin.com/in/asrasaeed/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-pink-600 hover:text-pink-700"
+            >
+              Asra Saeed
+            </a>
+            . I started it because I love using data to answer questions, and I believe more people
+            should be able to explore public data and uncover meaningful insights without needing to
+            be a statistician. {APP_NAME} is my attempt to make rigorous analysis more accessible,
+            transparent, and easy to understand.
+          </p>
+          <p className="mt-3 leading-relaxed text-stone-600">
+            If you have feedback, questions, or ideas, I&apos;d love to hear from you!
+          </p>
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold text-stone-800">Who it&apos;s for</h2>
+          <p className="mt-2 leading-relaxed text-stone-600">
+            Anyone curious about what public data can tell us, from journalists and students to
+            policy staff, researchers, community organizers, and everyday users. If the data is
+            open, you shouldn&apos;t need a data team to learn from it.
+          </p>
         </div>
       </section>
 
-      <section className="mt-12">
-        <h2 className="text-xl font-semibold text-stone-800">Where the data comes from</h2>
-        <p className="mt-3 leading-relaxed text-stone-600">
-          {APP_NAME} connects to authoritative public sources: the U.S. open-data catalog
-          (data.gov), the Federal Reserve&apos;s economic data (FRED), and the World Bank. Each
-          dataset carries its license and attribution, and only ingestible, well-formed files are
-          offered for analysis.
-        </p>
-      </section>
-
       <section className="mt-12 rounded-2xl border border-[#e8ddd0] bg-[#faf8f5] p-6 text-center">
-        <h2 className="text-lg font-semibold text-stone-800">Try it on a question you care about</h2>
+        <h2 className="text-lg font-semibold text-stone-800">Try it</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-stone-600">
-          Pick a public dataset or two and get ranked, verifiable findings in a couple of minutes.
+          Browse open datasets or start with a question you care about.
         </p>
-        <div className="mt-5">
+        <div className="mt-5 flex flex-col items-center gap-2.5 sm:flex-row sm:justify-center sm:gap-3">
           <Link
             href="/search"
             className="inline-block rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700"
           >
-            Search datasets
+            Browse datasets
+          </Link>
+          <Link
+            href="/explore"
+            className="inline-block rounded-xl border border-[#ddd0c0] bg-white px-6 py-3 text-sm font-semibold text-stone-700 transition hover:border-pink-200 hover:text-pink-700"
+          >
+            Ask a question
           </Link>
         </div>
       </section>

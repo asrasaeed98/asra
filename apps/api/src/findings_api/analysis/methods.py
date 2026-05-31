@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from findings_api.analysis.mode import AnalysisMode
 from findings_api.analysis.profile import TableProfile
 from findings_api.analysis.selector import plans_for_table
 
@@ -13,6 +14,7 @@ _PLAN_LABELS = {
 }
 
 _DERIVED_TREND_LABEL = "Year/time averages"
+_CROSS_MEASURE_LABEL = "Harmonized cross-dataset correlation"
 
 _ML_LABELS = [
     "K-means clustering",
@@ -27,13 +29,19 @@ def summarize_methods_run(
     profiles: list[TableProfile],
     *,
     ml_enabled: bool,
-    joined_ok: bool,
+    analysis_mode: AnalysisMode = "explore",
+    joined_ok: bool = False,
+    cross_measure_ran: bool = False,
 ) -> list[str]:
     """Unique human-readable methods planned for this session (in run order)."""
     labels: list[str] = []
     seen: set[str] = set()
-    has_derived_trend = False
 
+    if analysis_mode == "compare" and cross_measure_ran:
+        seen.add(_CROSS_MEASURE_LABEL)
+        labels.append(_CROSS_MEASURE_LABEL)
+
+    has_derived_trend = False
     for profile in profiles:
         table_joined = joined_ok and profile.table == "analysis_joined"
         for plan in plans_for_table(profile, joined=table_joined):

@@ -278,9 +278,18 @@ def analysis_notes(
     tests_planned: int,
     statistical_hits: int,
     total_findings: int,
+    cross_measure_report: dict | None = None,
+    analysis_mode: str = "explore",
 ) -> list[str]:
     """Factual coverage notes for the analysis report (not dataset recommendations)."""
     notes: list[str] = []
+    cross_ok = bool(cross_measure_report and cross_measure_report.get("success"))
+    compare = analysis_mode == "compare"
+
+    if compare and not cross_ok and not statistical_hits:
+        notes.append(
+            "Compare mode: no significant cross-dataset relationship found in overlapping country-years."
+        )
 
     if tests_planned > 0:
         notes.append(
@@ -290,6 +299,14 @@ def analysis_notes(
     elif total_findings > 0:
         notes.append(f"Produced {total_findings} descriptive summary result(s) from the loaded sample.")
 
+    if cross_measure_report:
+        if cross_ok:
+            summary = cross_measure_report.get("summary_note")
+            if summary:
+                notes.append(str(summary))
+        elif cross_measure_report.get("reason"):
+            notes.append(f"Cross-dataset correlation: {cross_measure_report['reason']}")
+
     for profile in profiles:
         if profile.n_rows < 20:
             notes.append(f"{profile.title} — small sample ({profile.n_rows} rows); many tests need more data.")
@@ -298,11 +315,15 @@ def analysis_notes(
             c.name.lower() in ("date", "year") for c in profile.columns
         )
         if len(profile.numeric) == 1 and has_date:
+            if cross_ok:
+                continue
             notes.append(
                 f"{profile.title} — time-series shape (date + numeric value); "
                 "trend tests ran, correlation skipped (needs 2+ numeric fields)."
             )
         elif len(profile.numeric) < 2:
+            if cross_ok:
+                continue
             notes.append(
                 f"{profile.title} — only {len(profile.numeric)} numeric field(s); "
                 "correlation/regression tests were not applicable."

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { LoadingBlock } from "@/components/LoadingBlock";
-import { formatRowCount, portalLabel } from "@/lib/catalog-labels";
+import { formatRowCount, portalLabel, ANALYSIS_ROW_CAP, LARGE_DOWNLOAD_ROW_HINT, MAX_DOWNLOAD_MB } from "@/lib/catalog-labels";
 import {
   createSession,
   getDatasetsBatch,
@@ -18,7 +18,7 @@ import {
 function samplingHint(rowHint: number | null | undefined) {
   if (rowHint == null) return "Row cap and 5% sample apply for large tables.";
   if (rowHint > 1_000_000) return "Large dataset — analysis uses a random sample (seed 42).";
-  if (rowHint > 100_000) return "Medium dataset — a sample may be used if needed.";
+  if (rowHint > ANALYSIS_ROW_CAP) return "Medium dataset — analysis uses up to 100,000 rows.";
   return "Full table used when row count is modest.";
 }
 
@@ -132,6 +132,8 @@ function ReviewContent() {
   const twoDatasets = catalogs.length >= 2;
   const backHref = `/search?ids=${ids.join(",")}`;
   const maxRowHint = Math.max(...catalogs.map((c) => c.row_count_hint ?? 0));
+  const largeDownload = maxRowHint >= LARGE_DOWNLOAD_ROW_HINT;
+  const timeEstimate = largeDownload ? "3–6 minutes" : "2–4 minutes";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -143,9 +145,15 @@ function ReviewContent() {
       </Link>
       <h1 className="mt-4 text-2xl font-semibold text-stone-800">Review & confirm</h1>
       <p className="mt-1 text-sm text-stone-600">
-        Confirm your choices, then we&apos;ll download the data and run analysis in one step (usually
-        2–4 minutes).
+        Confirm your choices, then we&apos;ll download the data and run analysis in one step (usually{" "}
+        {timeEstimate}).
       </p>
+      {largeDownload && (
+        <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-950">
+          Large dataset selected — download may take a few minutes (up to {MAX_DOWNLOAD_MB}MB for NYC
+          tables). Keep this tab open while loading; progress updates on the next screen.
+        </p>
+      )}
       <p className="mt-2 text-xs text-stone-500">{samplingHint(maxRowHint || null)}</p>
 
       <ul className="mt-6 space-y-3">
@@ -187,6 +195,14 @@ function ReviewContent() {
                     )}
                   </ul>
                 </details>
+              )}
+              {(ds.attribution_text || ds.license_display) && (
+                <p className="mt-2 text-xs leading-relaxed text-stone-500">
+                  {ds.license_display && (
+                    <span className="block text-stone-600">{ds.license_display}</span>
+                  )}
+                  {ds.attribution_text}
+                </p>
               )}
             </li>
           );

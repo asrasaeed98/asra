@@ -7,6 +7,8 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { DatasetDetailsPanel, FindingCard, MetricsGuide } from "@/components/FindingCard";
 import { KeyFindingsContent } from "@/components/KeyFindingsContent";
 import { LoadingBlock } from "@/components/LoadingBlock";
+import { ResultsDisclaimer } from "@/components/ResultsDisclaimer";
+import { SourceAttributions } from "@/components/SourceAttributions";
 import { VegaChart } from "@/components/VegaChart";
 import { getSessionResults, type Finding, type SessionResults } from "@/lib/api";
 import { formatSummaryBlocks } from "@/lib/summary-format";
@@ -362,6 +364,9 @@ function ResultsContent() {
           </div>
         </section>
       )}
+
+      <SourceAttributions catalogs={data.catalogs ?? []} />
+      <ResultsDisclaimer />
 
       <footer className="mt-8 border-t border-[#e8ddd0] pt-4 text-xs text-stone-400">
         <p>Session {sessionId}</p>

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import httpx
 
 from findings_api.catalog.column_quality import score_columns
+from findings_api.catalog.socrata import is_socrata_query_url, parse_query_url
 from findings_api.config import settings
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,9 @@ async def probe_url(
 
     if portal == "world_bank" or "api.worldbank.org" in url.lower():
         return await _probe_worldbank_url(url, client=client)
+
+    if portal == "nyc_open_data" or is_socrata_query_url(url):
+        return await _probe_socrata_url(url, client=client)
 
     max_bytes = settings.catalog_probe_max_bytes
     timeout = settings.catalog_probe_timeout_sec
@@ -204,6 +208,46 @@ async def _probe_fred_url(url: str, *, client: httpx.AsyncClient) -> ProbeResult
         return ProbeResult(False, f"HTTP {resp.status_code}", "HTTP_ERROR")
 
     return _probe_fred_bytes(resp.content)
+
+
+async def _probe_socrata_url(url: str, *, client: httpx.AsyncClient) -> ProbeResult:
+    """Probe a SODA3 query URL via POST (small sample)."""
+    try:
+        _base, _dataset_id, soql = parse_query_url(url)
+    except ValueError as exc:
+        return ProbeResult(False, str(exc), "HTTP_ERROR")
+
+    import re
+
+    sample_soql = re.sub(
+        r"(?i)\blimit\s+\d+",
+        f"LIMIT {max(settings.catalog_min_rows, 50)}",
+        soql,
+        count=1,
+    ) if re.search(r"(?i)\blimit\s+\d+", soql) else f"{soql} LIMIT {max(settings.catalog_min_rows, 50)}"
+
+    endpoint = url.split("?", 1)[0]
+    try:
+        resp = await client.post(
+            endpoint,
+            json={"query": sample_soql},
+            timeout=settings.catalog_probe_timeout_sec,
+        )
+    except httpx.HTTPError as exc:
+        return ProbeResult(False, f"Socrata probe failed: {exc}", "HTTP_ERROR")
+
+    if resp.status_code != 200:
+        return ProbeResult(False, f"HTTP {resp.status_code}", "HTTP_ERROR")
+
+    result = probe_bytes(resp.content[: settings.catalog_probe_max_bytes], url=url, portal="nyc_open_data")
+    # Sample size is not the dataset total — sync sets row_count_hint from a count query.
+    return ProbeResult(
+        result.ingestible,
+        result.reason,
+        result.detected_format,
+        result.columns,
+        row_count=None,
+    )
 
 
 async def _probe_worldbank_url(url: str, *, client: httpx.AsyncClient) -> ProbeResult:

@@ -23,9 +23,11 @@ def apply_ranking_context(
     findings: list[Finding],
     *,
     joined: bool = False,
+    compare_mode: bool | None = None,
 ) -> list[Finding]:
-    """Adjust scores so joined cross-measure correlations lead the results page."""
-    if not joined:
+    """Adjust scores so compare-mode correlations lead the results page."""
+    prioritize = compare_mode if compare_mode is not None else joined
+    if not prioritize:
         return findings
     for finding in findings:
         if finding.type == "spearman_correlation":
@@ -59,26 +61,31 @@ def select_display_findings(
     *,
     max_per_type: int = MAX_PER_TYPE_IN_TOP,
     joined: bool = False,
+    compare_mode: bool | None = None,
 ) -> list[Finding]:
     """
     Pick the top N cards for the main results view.
 
     Strategy (works across data.gov CSVs, World Bank APIs, etc.):
     1. Rank every finding by score = effect size × strength of evidence (−log10 p).
-    2. When two datasets were joined, lead with the cross-measure correlation.
+    2. In compare mode, lead with the cross-measure correlation.
     3. Prefer variety: at most `max_per_type` cards per test type in the top N.
     4. Fill any leftover slots with the next highest-scoring findings.
     """
     if not ranked:
         return []
 
+    prioritize = compare_mode if compare_mode is not None else joined
     pool = list(ranked)
     selected: list[Finding] = []
 
-    if joined:
+    if prioritize:
         correlations = [f for f in pool if f.type == "spearman_correlation"]
         if correlations:
-            lead = correlations[0]
+            lead = next(
+                (f for f in correlations if (f.details or {}).get("primary")),
+                correlations[0],
+            )
             selected.append(lead)
             pool = [f for f in pool if f.id != lead.id]
 
@@ -96,7 +103,7 @@ def select_display_findings(
         count = type_counts.get(finding.type, 0)
         if count >= max_per_type:
             continue
-        if joined and _is_geo_group_comparison(finding):
+        if prioritize and _is_geo_group_comparison(finding):
             continue
         selected.append(finding)
         type_counts[finding.type] = count + 1
@@ -106,7 +113,7 @@ def select_display_findings(
         for finding in pool:
             if finding.id in picked:
                 continue
-            if joined and _is_geo_group_comparison(finding):
+            if prioritize and _is_geo_group_comparison(finding):
                 continue
             selected.append(finding)
             if len(selected) >= n:

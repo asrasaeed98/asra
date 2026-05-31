@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.probe import ProbeResult, probe_url
 from findings_api.config import settings
+from findings_api.ingest.download import _get_with_retry
 from findings_api.licensing import (
     attribution_required,
     default_attribution,
@@ -77,6 +78,23 @@ def _observations_url(series_id: str) -> str:
     return f"{FRED_API}/series/observations?{params}"
 
 
+async def _fred_get(
+    client: httpx.AsyncClient,
+    path: str,
+    *,
+    params: dict,
+    timeout: float = 60.0,
+) -> httpx.Response:
+    """GET a FRED API path with retry/backoff on 429 and transient 5xx."""
+    return await _get_with_retry(
+        client,
+        f"{FRED_API}{path}",
+        source="FRED",
+        params=params,
+        timeout=timeout,
+    )
+
+
 def _is_copyrighted(notes: str | None) -> bool:
     return "copyright" in (notes or "").lower()
 
@@ -87,7 +105,7 @@ async def _fetch_series_meta(client: httpx.AsyncClient, series_id: str) -> dict 
         "file_type": "json",
         "api_key": settings.fred_api_key,
     }
-    resp = await client.get(f"{FRED_API}/series", params=params, timeout=30.0)
+    resp = await _fred_get(client, "/series", params=params, timeout=30.0)
     if resp.status_code != 200:
         return None
     payload = resp.json()
@@ -226,8 +244,14 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
                     "order_by": "popularity",
                     "sort_order": "desc",
                 }
-                resp = await client.get(f"{FRED_API}/series/search", params=params, timeout=60.0)
+                resp = await _fred_get(client, "/series/search", params=params)
                 if resp.status_code != 200:
+                    if resp.status_code == 429:
+                        logger.warning(
+                            "FRED search rate limit persists for %r at offset %s; skipping query",
+                            query,
+                            offset,
+                        )
                     break
                 payload = resp.json()
                 series_list = payload.get("seriess") or payload.get("series") or []
@@ -255,8 +279,13 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
                     "limit": 1000,
                     "offset": offset,
                 }
-                resp = await client.get(f"{FRED_API}/series", params=params, timeout=60.0)
+                resp = await _fred_get(client, "/series", params=params)
                 if resp.status_code != 200:
+                    if resp.status_code == 429:
+                        logger.warning(
+                            "FRED bulk series rate limit persists at offset %s; stopping bulk fetch",
+                            offset,
+                        )
                     break
                 payload = resp.json()
                 series_list = payload.get("seriess") or payload.get("series") or []

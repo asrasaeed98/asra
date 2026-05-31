@@ -22,34 +22,34 @@ const EXAMPLE_QUESTIONS = [
 ] as const;
 
 const OUTPUTS = [
-  "AI Summary of ranked key findings",
-  "Auto-generated charts linked to each finding",
-  "LLM-powered chat grounded in your results",
-  "Full analysis report with tests, p-values, and sources",
+  "Plain-language summary of the strongest patterns",
+  "Charts linked to each finding",
+  "Chat to ask follow-up questions about your results",
+  "Full report with tests, p-values, and data sources",
 ] as const;
 
 const STEPS = [
   {
     step: 1,
-    title: "Search real, licensed datasets",
+    title: "Pick public datasets",
     description:
-      "Browse vetted public catalogs (data.gov, FRED, World Bank) with license checks. We pull the data in and handle cleaning and joins for you.",
+      "Browse open catalogs like data.gov, FRED, World Bank, and NYC Open Data, with license checks built in. We pull the data and handle cleaning and joins.",
     descriptionShort:
-      "Browse data.gov, FRED, and World Bank. We handle cleaning and joins.",
+      "Browse data.gov, FRED, World Bank, and NYC Open Data. We handle cleaning and joins.",
   },
   {
     step: 2,
-    title: "We compute the statistics",
+    title: "We run the analysis",
     description:
-      "Real statistical tests, including correlations, group differences, time trends, and category associations, plus machine-learning models that surface clusters and hidden patterns. Each result carries its p-value, sample size, and the query behind it, so the numbers are computed, not guessed.",
+      "Real statistical tests (correlations, group differences, trends, and more) plus machine-learning patterns. Every result includes its p-value, sample size, and the query behind it.",
     descriptionShort:
       "Correlations, trends, group tests, and ML patterns, each with p-values and sample sizes.",
   },
   {
     step: 3,
-    title: "Get ranked, plain-language findings",
+    title: "Get evidence-backed findings",
     description:
-      "The strongest patterns first, explained simply, with every number traceable to a result, plus a grounded chat for follow-up questions.",
+      "The strongest patterns first, explained in plain language, with every number traceable to a result. Ask follow-up questions in a grounded chat.",
     descriptionShort:
       "Ranked findings in plain language, plus grounded chat for follow-ups.",
   },
@@ -59,19 +59,16 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:py-16">
       <section className="text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.15em] text-pink-600 sm:tracking-[0.2em]">
-          Insights from open data
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-800 sm:mt-4 sm:text-5xl">
-          Ask a question.{" "}
+        <h1 className="text-3xl font-semibold tracking-tight text-stone-800 sm:text-5xl">
+          Turn public datasets into{" "}
           <span className="bg-gradient-to-r from-pink-600 to-pink-400 bg-clip-text text-transparent">
-            Get findings you can trust
+            findings you can trust
           </span>
           .
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-stone-600 sm:mt-5 sm:text-lg">
-          {APP_NAME} joins public datasets, runs real statistical tests, and returns ranked,
-          plain-language answers with charts and a full analysis report.
+          Ask a question, analyze trusted public datasets, and uncover statistically-backed findings
+          with charts, explanations, and a complete analysis report.
         </p>
         <div className="mt-6 flex flex-col items-center gap-2.5 sm:mt-8 sm:flex-row sm:justify-center sm:gap-3">
           <Link
@@ -123,16 +120,8 @@ export default function Home() {
         <div className="flex flex-col gap-4">
           <div className="rounded-2xl border border-[#e8ddd0] bg-white px-5 py-5 text-left shadow-sm sm:px-6 sm:py-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-pink-700">
-              Example finding
+              Every analysis includes
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-stone-800 sm:text-base">
-              <span className="font-semibold">Moderate positive association</span> between adult
-              literacy and internet usage (Spearman{" "}
-              <span className="font-mono text-sm">r = 0.63</span>,{" "}
-              <span className="font-mono text-sm">n = 1,538</span>). Countries with higher literacy
-              tend to have higher internet adoption.
-            </p>
-            <p className="mt-4 text-sm font-medium text-stone-700">Every analysis includes:</p>
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-stone-600">
               {OUTPUTS.map((item) => (
                 <li key={item} className="flex gap-2">
@@ -143,6 +132,19 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="rounded-2xl border border-[#e8ddd0] bg-white px-5 py-5 text-left shadow-sm sm:px-6 sm:py-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-pink-700">
+              Example finding
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-800 sm:text-base">
+              <span className="font-semibold">Moderate positive association</span> between adult
+              literacy and internet usage (Spearman{" "}
+              <span className="font-mono text-sm">r = 0.63</span>,{" "}
+              <span className="font-mono text-sm">n = 1,538</span>). Countries with higher literacy
+              tend to have higher internet adoption.
+            </p>
           </div>
 
           <div className="hidden overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm md:block">
@@ -191,11 +193,12 @@ export default function Home() {
 
       <section className="mt-12 rounded-2xl border border-[#e8ddd0] bg-[#faf8f5] p-6 text-center sm:mt-16">
         <h2 className="text-lg font-semibold text-stone-800">
-          Built for people who need answers from public data
+          Open data should be useful to more than data scientists
         </h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-stone-600">
-          Policy analysts, researchers, and journalists use {APP_NAME} when they need defensible
-          insights, not black-box summaries. Computed statistics, licensed sources, full traceability.
+          Governments and institutions publish vast amounts of public data, but most people never
+          get to use it. {APP_NAME} lowers the barrier with real statistics, licensed sources, and
+          answers you can read and share.
         </p>
       </section>
     </div>

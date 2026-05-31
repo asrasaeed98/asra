@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { sendSessionChat, type ChatState, type ChatTurn } from "@/lib/api";
 
 const SUGGESTIONS = [
@@ -8,6 +9,22 @@ const SUGGESTIONS = [
   "What does this mean in plain terms?",
   "Which fields were most related?",
 ];
+
+const assistantMarkdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="mb-2 last:mb-0">{children}</p>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-stone-800">{children}</strong>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="my-2 list-disc space-y-1 pl-4">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="my-2 list-decimal space-y-1 pl-4">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => <li>{children}</li>,
+};
 
 export function ChatPanel({
   sessionId,
@@ -79,7 +96,7 @@ export function ChatPanel({
         </span>
       </div>
       <p className="mt-1 text-xs text-stone-500">
-        Answers are grounded only in this analysis&apos;s findings — not the raw data. Limited to{" "}
+        Answers use your findings and can query loaded session data for specifics. Limited to{" "}
         {maxQuestions} questions.
       </p>
 
@@ -100,15 +117,19 @@ export function ChatPanel({
               key={i}
               className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              <p
-                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+              <div
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                   m.role === "user"
-                    ? "bg-pink-600 text-white"
+                    ? "whitespace-pre-wrap bg-pink-600 text-white"
                     : "border border-[#e8ddd0] bg-white text-stone-700"
                 }`}
               >
-                {m.content}
-              </p>
+                {m.role === "user" ? (
+                  m.content
+                ) : (
+                  <ReactMarkdown components={assistantMarkdownComponents}>{m.content}</ReactMarkdown>
+                )}
+              </div>
             </div>
           ))}
           {loading && (

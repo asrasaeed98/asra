@@ -136,6 +136,7 @@ export type SessionResults = {
   ai_summary_fallback_reason?: string | null;
   chat?: ChatState;
   message?: string;
+  catalogs?: CatalogResult[];
 };
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };

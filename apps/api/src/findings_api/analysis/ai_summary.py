@@ -1,4 +1,4 @@
-"""Grounded executive summary from top findings (Anthropic + validation)."""
+"""Grounded executive summary from analysis results (Anthropic + validation)."""
 
 from __future__ import annotations
 
@@ -13,9 +13,15 @@ from findings_api.config import settings
 logger = logging.getLogger(__name__)
 
 _NUMBER_RE = re.compile(
-    r"(?<![A-Za-z0-9_])"  # not part of an identifier
+    r"(?<![A-Za-z0-9_])"
     r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d+)"
     r"(?![A-Za-z0-9_])"
+)
+
+_SYSTEM_PROMPT = (
+    "You write plain-language key findings for a public-data analysis app. "
+    "Interpret cryptic column names using dataset titles, source publishers, column labels, "
+    "glossaries, measure context, and sample rows. Never invent statistics."
 )
 
 
@@ -43,7 +49,6 @@ def _collect_allowed_numbers(findings: list[dict[str, Any]]) -> set[float]:
 
     for finding in findings:
         walk(finding)
-    # Common small counts the model may use when referring to finding count.
     allowed.update({float(i) for i in range(1, 11)})
     return allowed
 
@@ -65,7 +70,6 @@ def _number_allowed(value: float, allowed: set[float]) -> bool:
         scale = max(abs(candidate), abs(value), 1.0)
         if abs(candidate - value) <= 0.01 * scale:
             return True
-        # Whole-number display (120000 vs 120,000 already normalized)
         if abs(round(candidate) - value) < 0.5 and abs(round(candidate) - candidate) < 0.01:
             if abs(round(candidate) - value) < 0.5:
                 return True
@@ -73,7 +77,6 @@ def _number_allowed(value: float, allowed: set[float]) -> bool:
 
 
 def _expand_allowed_numbers(allowed: set[float]) -> None:
-    """Allow common alternate forms (percent display, small counts, rounded ints)."""
     allowed.update(float(i) for i in range(1, 26))
     for value in list(allowed):
         if 0 < abs(value) <= 1.01:
@@ -109,17 +112,47 @@ def validate_summary_numbers(
     return True
 
 
+def _column_labels(details: dict[str, Any], columns: list[str]) -> list[str]:
+    labels: list[str] = []
+    for idx, col in enumerate(columns):
+        if details.get("measure_context") and idx == 0 and details["measure_context"].get("label"):
+            labels.append(str(details["measure_context"]["label"]))
+            continue
+        labels.append(col)
+    return labels
+
+
 def _finding_payload(finding: dict[str, Any]) -> dict[str, Any]:
     details = finding.get("details") or {}
-    return {
+    columns = finding.get("columns") or []
+    payload: dict[str, Any] = {
+        "id": finding.get("id"),
+        "rank_score": finding.get("score"),
         "headline": details.get("headline") or finding.get("title"),
         "impact": details.get("impact"),
         "type": finding.get("type"),
+        "method": finding.get("method"),
+        "columns": columns,
+        "column_labels": _column_labels(details, columns) if columns else [],
+        "direction": details.get("direction"),
+        "primary": details.get("primary"),
+        "badge": details.get("badge"),
         "n": finding.get("n"),
         "p_value": finding.get("p_value"),
         "effect": finding.get("value"),
         "caveat": finding.get("caveat"),
+        "chart_title": details.get("chart_title"),
     }
+    ctx = details.get("measure_context")
+    if ctx:
+        payload["measure_context"] = {
+            k: ctx.get(k) for k in ("label", "unit", "source", "disclosure") if ctx.get(k)
+        }
+    if finding.get("type") == "group_comparison" and details.get("group_means"):
+        payload["group_means"] = details.get("group_means")
+        payload["highest_group"] = details.get("highest_group")
+        payload["lowest_group"] = details.get("lowest_group")
+    return {k: v for k, v in payload.items() if v is not None}
 
 
 def _summary_sort_key(finding: dict[str, Any]) -> tuple:
@@ -129,6 +162,20 @@ def _summary_sort_key(finding: dict[str, Any]) -> tuple:
     if finding.get("type") == "spearman_correlation":
         return (1, -abs(float(finding.get("value") or 0)))
     return (2, 0)
+
+
+def _display_findings(context: dict[str, Any]) -> list[dict[str, Any]]:
+    all_findings = context.get("all_findings") or []
+    display_ids = set(context.get("display_finding_ids") or [])
+    if display_ids:
+        ordered = [f for f in all_findings if f.get("id") in display_ids]
+        if ordered:
+            return ordered
+    return all_findings[:5]
+
+
+def _dataset_titles(context: dict[str, Any]) -> list[str]:
+    return [str(d.get("title") or "Dataset") for d in context.get("datasets") or []]
 
 
 def template_summary_blocks(
@@ -191,7 +238,6 @@ def template_summary(
     user_intent: str | None = None,
     dataset_titles: list[str] | None = None,
 ) -> str:
-    """Plain-text fallback (legacy field)."""
     return blocks_to_plain_text(
         template_summary_blocks(findings, user_intent=user_intent, dataset_titles=dataset_titles)
     )
@@ -208,39 +254,51 @@ def blocks_to_plain_text(blocks: list[dict[str, Any]]) -> str:
     return "\n\n".join(parts)
 
 
-def _build_prompt(
-    findings: list[dict[str, Any]],
-    *,
-    user_intent: str | None,
-    dataset_titles: list[str],
-) -> str:
-    payload = {
-        "datasets": dataset_titles,
-        "user_intent": user_intent,
-        "findings": [_finding_payload(f) for f in findings],
-    }
-    return f"""Write key findings for a non-technical audience based ONLY on these computed results.
+def _build_prompt(context: dict[str, Any]) -> str:
+    user_intent = context.get("user_intent")
+    intent_block = ""
+    if user_intent:
+        intent_block = f"""
+The user asked this research question — address it directly in the intro when possible:
+\"{user_intent}\"
+"""
 
+    payload = {
+        "datasets": context.get("datasets") or [],
+        "both_datasets_nyc_open_data": context.get("both_datasets_nyc_open_data"),
+        "join": context.get("join"),
+        "methods_run": context.get("methods_run") or [],
+        "analysis_overview": context.get("analysis_overview") or {},
+        "column_glossary": context.get("column_glossary") or [],
+        "all_findings": [_finding_payload(f) for f in context.get("all_findings") or []],
+        "featured_finding_ids": context.get("display_finding_ids") or [],
+    }
+
+    return f"""Write key findings for a non-technical audience based ONLY on the analysis context below.
+{intent_block}
 Return ONLY valid JSON (no markdown fences, no commentary) in exactly this shape:
 {{
-  "intro": "1-2 short sentences: what dataset and the headline pattern",
+  "intro": "1-2 short sentences: what was analyzed, the headline pattern, and (if provided) how it relates to the user's question",
   "highlights": [
-    "One plain-language bullet per major finding (3 to 5 items)",
+    "One plain-language bullet per major finding (3 to 6 items)",
     "Each bullet is one digestible sentence",
-    "Most important finding first"
+    "Lead with the strongest / featured findings; cover other important patterns when relevant"
   ],
   "caveat": "One sentence: correlation/group differences are not proof of causation"
 }}
 
 Rules:
-- Use plain language (avoid p-value, Spearman, Kruskal unless unavoidable).
+- Use plain language. Avoid jargon like p-value, Spearman, Kruskal, chi-square unless unavoidable.
+- When column names are cryptic (e.g. value, amt, yr), infer readable names from dataset titles, sources, column labels, glossary, measure_context, and sample_rows — then write using those plain names.
+- If datasets were joined, mention what they were combined on and what that comparison means in plain terms.
+- If both datasets are NYC Open Data, you may say so when relevant.
 - Do NOT invent numbers — only reuse figures explicitly present in the JSON below.
 - Do NOT use markdown headers or titles.
 - highlights must be an array of strings, not a single paragraph.
-- Do not mention SQL, tests, or machine learning.
+- Do not mention SQL, internal test names, or machine-learning algorithm names.
 
-Findings JSON:
-{json.dumps(payload, indent=2)}"""
+Analysis context JSON:
+{json.dumps(payload, indent=2, default=str)}"""
 
 
 def _parse_summary_json(text: str) -> list[dict[str, Any]] | None:
@@ -267,7 +325,7 @@ def _parse_summary_json(text: str) -> list[dict[str, Any]] | None:
     elif isinstance(highlights, str) and highlights.strip():
         items = [line.strip() for line in highlights.split("\n") if line.strip()]
     if items:
-        blocks.append({"type": "list", "items": items[:6]})
+        blocks.append({"type": "list", "items": items[:8]})
 
     caveat = data.get("caveat")
     if isinstance(caveat, str) and caveat.strip():
@@ -287,7 +345,6 @@ def _blocks_to_validation_text(blocks: list[dict[str, Any]]) -> str:
 
 
 def sanitize_summary_text(text: str) -> str:
-    """Drop markdown headings from legacy plain-text summaries."""
     blocks = _parse_summary_json(text)
     if blocks:
         return blocks_to_plain_text(blocks)
@@ -313,27 +370,22 @@ _NO_DIGITS_RETRY = (
 )
 
 
-def _summary_context_text(
-    titles: list[str],
-    user_intent: str | None,
-    extra_context: str,
-) -> str:
-    return " ".join(titles) + " " + (user_intent or "") + " " + extra_context
+def _context_validation_text(context: dict[str, Any]) -> str:
+    return json.dumps(context, default=str)
 
 
 def _anthropic_summary_blocks(
     client: Any,
-    findings: list[dict[str, Any]],
+    context: dict[str, Any],
     *,
-    user_intent: str | None,
-    dataset_titles: list[str],
     prompt_suffix: str = "",
     on_usage: Callable[[str, int, int], None] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    prompt = _build_prompt(findings, user_intent=user_intent, dataset_titles=dataset_titles) + prompt_suffix
+    prompt = _build_prompt(context) + prompt_suffix
     response = client.messages.create(
         model=settings.anthropic_model_summary,
-        max_tokens=700,
+        max_tokens=1200,
+        system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
     if on_usage is not None:
@@ -356,11 +408,8 @@ def _anthropic_summary_blocks(
 
 
 def generate_ai_summary(
-    findings: list[dict[str, Any]],
+    context: dict[str, Any],
     *,
-    user_intent: str | None = None,
-    dataset_titles: list[str] | None = None,
-    extra_context: str = "",
     allow_ai: bool = True,
     on_usage: Callable[[str, int, int], None] | None = None,
 ) -> tuple[str, str, list[dict[str, Any]], str | None]:
@@ -370,17 +419,21 @@ def generate_ai_summary(
     ``source`` is ``anthropic`` or ``template``. ``fallback_reason`` is set when
     the template path was chosen after AI was skipped or failed.
     """
-    titles = dataset_titles or []
-    context_text = _summary_context_text(titles, user_intent, extra_context)
-    if not findings:
+    all_findings = context.get("all_findings") or []
+    display = _display_findings(context)
+    titles = _dataset_titles(context)
+    user_intent = context.get("user_intent")
+    validation_context = _context_validation_text(context)
+
+    if not all_findings:
         blocks = template_summary_blocks([], user_intent=user_intent, dataset_titles=titles)
         return blocks_to_plain_text(blocks), "template", blocks, None
 
     if not settings.anthropic_api_key:
-        blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
+        blocks = template_summary_blocks(display, user_intent=user_intent, dataset_titles=titles)
         return blocks_to_plain_text(blocks), "template", blocks, "no_api_key"
     if not allow_ai:
-        blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
+        blocks = template_summary_blocks(display, user_intent=user_intent, dataset_titles=titles)
         return blocks_to_plain_text(blocks), "template", blocks, "budget_exhausted"
 
     fallback_reason: str | None = "api_error"
@@ -392,9 +445,7 @@ def generate_ai_summary(
             try:
                 text, blocks = _anthropic_summary_blocks(
                     client,
-                    findings,
-                    user_intent=user_intent,
-                    dataset_titles=titles,
+                    context,
                     prompt_suffix=suffix,
                     on_usage=on_usage,
                 )
@@ -402,7 +453,11 @@ def generate_ai_summary(
                 logger.exception("AI summary generation failed (attempt %s)", attempt + 1)
                 continue
 
-            if validate_summary_numbers(_blocks_to_validation_text(blocks), findings, context_text=context_text):
+            if validate_summary_numbers(
+                _blocks_to_validation_text(blocks),
+                all_findings,
+                context_text=validation_context,
+            ):
                 return text, "anthropic", blocks, None
 
             if attempt == 0:
@@ -413,12 +468,11 @@ def generate_ai_summary(
     except Exception:
         logger.exception("AI summary generation failed")
 
-    blocks = template_summary_blocks(findings, user_intent=user_intent, dataset_titles=titles)
+    blocks = template_summary_blocks(display, user_intent=user_intent, dataset_titles=titles)
     return blocks_to_plain_text(blocks), "template", blocks, fallback_reason
 
 
 def legacy_text_to_blocks(text: str) -> list[dict[str, Any]]:
-    """Convert plain summary text into paragraph/list blocks."""
     blocks: list[dict[str, Any]] = []
     paragraph_lines: list[str] = []
     list_items: list[str] = []

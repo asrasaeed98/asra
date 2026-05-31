@@ -8,8 +8,8 @@ PY="${ROOT}/apps/api/.venv/bin/python"
 CLI="findings_api.catalog.cli"
 
 cmd="${1:-}"
-if [[ -z "$cmd" || ! "$cmd" =~ ^(sync|grow|probe|health)$ ]]; then
-  echo "Usage: $0 {sync|grow|probe|health} [extra args...]" >&2
+if [[ -z "$cmd" || ! "$cmd" =~ ^(sync|sync-nyc|grow|probe|health)$ ]]; then
+  echo "Usage: $0 {sync|sync-nyc|grow|probe|health} [extra args...]" >&2
   exit 1
 fi
 shift
@@ -47,6 +47,9 @@ cd "$ROOT/apps/api"
 case "$cmd" in
   sync)
     exec "$PY" -m "$CLI" sync "$@"
+    ;;
+  sync-nyc)
+    exec "$PY" -m "$CLI" sync-nyc "$@"
     ;;
   grow)
     exec "$PY" -m "$CLI" grow "$@"

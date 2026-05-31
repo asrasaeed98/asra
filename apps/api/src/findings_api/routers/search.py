@@ -75,7 +75,7 @@ def search_topics(db: Session = Depends(get_db)):
 def search(
     q: str = Query("", description="Search query"),
     topic: str | None = Query(None, description="Theme filter: economy | health | environment | education | poverty"),
-    portal: str | None = Query(None, description="data_gov | world_bank | fred"),
+    portal: str | None = Query(None, description="data_gov | world_bank | fred | nyc_open_data"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),

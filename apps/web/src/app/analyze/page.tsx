@@ -95,7 +95,10 @@ function AnalyzeContent() {
   const timeHint =
     status?.estimate_remaining_sec != null
       ? formatSeconds(status.estimate_remaining_sec)
-      : "Usually 2–4 minutes";
+      : status?.message?.toLowerCase().includes("minute") ||
+          status?.message?.toLowerCase().includes("downloaded")
+        ? "May take several minutes for large datasets"
+        : "Usually 2–4 minutes";
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10">

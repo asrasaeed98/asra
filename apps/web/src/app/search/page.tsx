@@ -13,7 +13,7 @@ import {
   type SearchTopic,
 } from "@/lib/api";
 import { LoadingBlock } from "@/components/LoadingBlock";
-import { formatRowCount, portalLabel } from "@/lib/catalog-labels";
+import { formatRowCount, portalBadgeClass, portalLabel } from "@/lib/catalog-labels";
 
 function topicTitle(topics: SearchTopic[], id: string) {
   return topics.find((t) => t.id === id)?.title ?? id.replace(/-/g, " ");
@@ -25,10 +25,12 @@ function isBrowseLanding(query: string, theme: string, source: string) {
 
 function TopicBrowseGrid({
   topics,
-  onSelect,
+  topicsLoading,
+  onSelectTopic,
 }: {
   topics: SearchTopic[];
-  onSelect: (topicId: string) => void;
+  topicsLoading: boolean;
+  onSelectTopic: (topicId: string) => void;
 }) {
   return (
     <section className="mt-8">
@@ -36,23 +38,76 @@ function TopicBrowseGrid({
       <p className="mt-1 text-sm text-stone-500">
         Pick a topic to explore datasets, or search by keyword above.
       </p>
+      {topicsLoading ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              aria-hidden
+              className="h-[7.25rem] animate-pulse rounded-2xl border border-[#e8ddd0] bg-[#faf6f0]"
+            />
+          ))}
+        </div>
+      ) : (
+        <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+          {topics.map((t) => (
+            <li key={t.id}>
+              <button
+                type="button"
+                onClick={() => onSelectTopic(t.id)}
+                className="flex h-full w-full flex-col rounded-2xl border border-[#e8ddd0] bg-white p-4 text-left shadow-sm transition hover:border-pink-200 hover:shadow-md"
+              >
+                <span className="text-sm font-semibold text-stone-800">{t.title}</span>
+                <span className="mt-1 line-clamp-2 text-xs text-stone-500">{t.description}</span>
+                <span className="mt-3 text-xs font-medium text-pink-600">
+                  {t.dataset_count.toLocaleString()} dataset{t.dataset_count === 1 ? "" : "s"}
+                  {t.path_count > 0 &&
+                    ` · ${t.path_count} curated example${t.path_count === 1 ? "" : "s"}`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CityBrowseGrid({
+  nycDatasetCount,
+  nycLoading,
+  onSelectNyc,
+}: {
+  nycDatasetCount: number | null;
+  nycLoading: boolean;
+  onSelectNyc: () => void;
+}) {
+  return (
+    <section className="mt-10">
+      <h2 className="text-lg font-semibold text-stone-800">Browse by city</h2>
+      <p className="mt-1 text-sm text-stone-500">
+        Local open-data portals with city-specific datasets.
+      </p>
       <ul className="mt-5 grid gap-3 sm:grid-cols-2">
-        {topics.map((t) => (
-          <li key={t.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(t.id)}
-              className="flex h-full w-full flex-col rounded-2xl border border-[#e8ddd0] bg-white p-4 text-left shadow-sm transition hover:border-pink-200 hover:shadow-md"
-            >
-              <span className="text-sm font-semibold text-stone-800">{t.title}</span>
-              <span className="mt-1 line-clamp-2 text-xs text-stone-500">{t.description}</span>
-              <span className="mt-3 text-xs font-medium text-pink-600">
-                {t.dataset_count.toLocaleString()} dataset{t.dataset_count === 1 ? "" : "s"}
-                {t.path_count > 0 && ` · ${t.path_count} curated example${t.path_count === 1 ? "" : "s"}`}
-              </span>
-            </button>
-          </li>
-        ))}
+        <li>
+          <button
+            type="button"
+            onClick={onSelectNyc}
+            className="flex h-full w-full flex-col rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 text-left shadow-sm transition hover:border-sky-300 hover:shadow-md"
+          >
+            <span className="text-sm font-semibold text-stone-800">New York City</span>
+            <span className="mt-1 line-clamp-2 text-xs text-stone-500">
+              NYC Open Data — 311, crime, housing, restaurants, traffic, and more.
+            </span>
+            <span className="mt-3 text-xs font-medium text-sky-700">
+              {nycLoading
+                ? "Loading…"
+                : nycDatasetCount != null
+                  ? `${nycDatasetCount.toLocaleString()} dataset${nycDatasetCount === 1 ? "" : "s"}`
+                  : "Browse NYC →"}
+            </span>
+          </button>
+        </li>
       </ul>
     </section>
   );
@@ -84,7 +139,7 @@ function ResultCard({
             <p className="mt-1 text-sm text-stone-600">{item.organization}</p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-            <span className="rounded-full border border-[#e8ddd0] bg-[#faf6f0] px-2 py-0.5 font-medium text-stone-600">
+            <span className={`rounded-full border px-2 py-0.5 font-medium ${portalBadgeClass(item.portal)}`}>
               {portalLabel(item.portal)}
             </span>
             {rowLabel && (
@@ -158,6 +213,8 @@ function SearchContent() {
   const [selected, setSelected] = useState<string[]>(() =>
     (params.get("ids") ?? "").split(",").filter(Boolean).slice(0, 2),
   );
+  const [nycCount, setNycCount] = useState<number | null>(null);
+  const [nycCountLoading, setNycCountLoading] = useState(false);
   const idsFromUrl = params.get("ids") ?? "";
 
   useEffect(() => {
@@ -238,6 +295,12 @@ function SearchContent() {
     updateSearchUrl({ portal, topic: nextTopic, ids: selected });
   }
 
+  function onSelectNyc() {
+    setTopic("");
+    setPortal("nyc_open_data");
+    updateSearchUrl({ portal: "nyc_open_data", topic: "", ids: selected });
+  }
+
   useEffect(() => {
     if (isBrowseLanding(q, topic, portal)) {
       setData(null);
@@ -251,6 +314,15 @@ function SearchContent() {
   }, [portal, topic]);
 
   const showTopicBrowse = isBrowseLanding(q, topic, portal);
+
+  useEffect(() => {
+    if (!showTopicBrowse) return;
+    setNycCountLoading(true);
+    void searchDatasets("", "nyc_open_data")
+      .then((res) => setNycCount(res.total))
+      .catch(() => setNycCount(null))
+      .finally(() => setNycCountLoading(false));
+  }, [showTopicBrowse]);
 
   async function onLoadCatalog() {
     setSyncing(true);
@@ -331,12 +403,13 @@ function SearchContent() {
               <option value="data_gov">data.gov only</option>
               <option value="world_bank">World Bank only</option>
               <option value="fred">FRED only</option>
+              <option value="nyc_open_data">NYC Open Data only</option>
             </select>
           </label>
           <button
             type="submit"
             disabled={loading}
-            className="rounded-xl bg-stone-800 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-stone-900 disabled:opacity-50 sm:mb-0"
+            className="rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700 disabled:opacity-50 sm:mb-0"
           >
             {loading ? "Searching…" : "Search"}
           </button>
@@ -349,14 +422,19 @@ function SearchContent() {
         </div>
       )}
 
-      {showTopicBrowse && !topicsLoading && topics.length > 0 && (
-        <TopicBrowseGrid topics={topics} onSelect={onTopicChange} />
-      )}
-
-      {showTopicBrowse && topicsLoading && (
-        <div className="mt-8">
-          <LoadingBlock message="Loading themes…" />
-        </div>
+      {showTopicBrowse && (
+        <>
+          <TopicBrowseGrid
+            topics={topics}
+            topicsLoading={topicsLoading}
+            onSelectTopic={onTopicChange}
+          />
+          <CityBrowseGrid
+            nycDatasetCount={nycCount}
+            nycLoading={nycCountLoading}
+            onSelectNyc={onSelectNyc}
+          />
+        </>
       )}
 
       {error && !showTopicBrowse && (

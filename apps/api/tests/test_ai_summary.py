@@ -84,10 +84,15 @@ def test_validate_allows_small_counts_in_context():
 
 def test_generate_without_api_key_uses_template(monkeypatch):
     monkeypatch.setattr("findings_api.analysis.ai_summary.settings.anthropic_api_key", "")
-    summary, source, blocks, reason = generate_ai_summary(
-        [{"title": "Test", "details": {"impact": "Something happened."}, "n": 10}],
-        dataset_titles=["Dataset A"],
-    )
+    context = {
+        "user_intent": None,
+        "datasets": [{"title": "Dataset A"}],
+        "all_findings": [
+            {"id": "f_1", "title": "Test", "details": {"impact": "Something happened."}, "n": 10}
+        ],
+        "display_finding_ids": ["f_1"],
+    }
+    summary, source, blocks, reason = generate_ai_summary(context)
     assert source == "template"
     assert reason == "no_api_key"
     assert "Something happened" in summary

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { APP_NAME } from "@/lib/app-name";
+import { SiteFooter } from "@/components/SiteFooter";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -71,11 +72,7 @@ export default function RootLayout({
           </div>
         </header>
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-[#e8ddd0] bg-[#fffcf8]/80">
-          <div className="mx-auto max-w-5xl px-4 py-4 text-center text-xs text-stone-400">
-            Phase 1 prototype
-          </div>
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

@@ -15,6 +15,11 @@ from findings_api.analysis.labels import column_entry
 from findings_api.catalog.validate import validate_table
 from findings_api.config import settings
 from findings_api.ingest.download import DownloadError, fetch_resource_bytes, redact_secrets
+from findings_api.ingest.download_policy import (
+    download_complete_message,
+    large_download_start_message,
+    resource_is_large,
+)
 from findings_api.ingest.duckdb_store import (
     build_analysis_view_sql,
     connect,
@@ -193,6 +198,13 @@ async def run_ingest(db: Session, session_id: str) -> None:
                 raise DownloadError(f"No download URL for {rid}")
             resources.append(row)
 
+        config = dict(session.config or {})
+        if any(resource_is_large(r) for r in resources):
+            config["large_download"] = True
+            session.config = config
+            db.add(session)
+            db.commit()
+
         session_db_path(session_id).unlink(missing_ok=True)
         conn = connect(session_id)
         profiles: list[dict] = []
@@ -201,34 +213,45 @@ async def run_ingest(db: Session, session_id: str) -> None:
             async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
                 for idx, resource in enumerate(resources):
                     pct = 10 + int(70 * (idx / max(len(resources), 1)))
+                    pct_end = min(pct + 8, 85)
                     dataset_n = idx + 1
                     total_n = len(resources)
+                    if resource_is_large(resource):
+                        start_msg = large_download_start_message(
+                            title=resource.title,
+                            row_count_hint=resource.row_count_hint,
+                            portal=resource.portal,
+                        )
+                    else:
+                        start_msg = (
+                            f"Downloading dataset {dataset_n} of {total_n}…"
+                            if total_n > 1
+                            else "Downloading dataset…"
+                        )
                     _set_progress(
                         db,
                         session,
                         phase="ingest",
-                        message=(
-                            f"Downloading dataset {dataset_n} of {total_n}…"
-                            if total_n > 1
-                            else "Downloading dataset…"
-                        ),
+                        message=start_msg,
                         percent=pct,
                     )
+
+                    def _on_progress(msg: str, *, _pct: int = pct, _pct_end: int = pct_end) -> None:
+                        _set_progress(
+                            db,
+                            session,
+                            phase="ingest",
+                            message=msg,
+                            percent=min(_pct_end, _pct + 4),
+                        )
+
                     data, kind = await fetch_resource_bytes(
                         resource.resource_url,
                         client=client,
                         portal=resource.portal,
-                    )
-                    _set_progress(
-                        db,
-                        session,
-                        phase="ingest",
-                        message=(
-                            f"Processing dataset {dataset_n} of {total_n}…"
-                            if total_n > 1
-                            else "Processing dataset…"
-                        ),
-                        percent=min(pct + 5, 85),
+                        on_progress=_on_progress,
+                        title=resource.title,
+                        row_count_hint=resource.row_count_hint,
                     )
                     raw_table = f"raw_{idx}"
                     _load_bytes(
@@ -251,6 +274,17 @@ async def run_ingest(db: Session, session_id: str) -> None:
                         raise DownloadError(
                             f"{resource.title}: {validation.reason}"
                         )
+                    _set_progress(
+                        db,
+                        session,
+                        phase="ingest",
+                        message=download_complete_message(
+                            title=resource.title,
+                            rows=profile["row_count"],
+                            size_bytes=len(data),
+                        ),
+                        percent=min(pct + 6, 86),
+                    )
                     profile["resource_id"] = resource.id
                     profile["title"] = resource.title
                     profile["raw_table"] = raw_table

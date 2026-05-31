@@ -185,7 +185,7 @@ Return ONLY JSON with keys:
 Do not invent numbers. Use catalog title and constant indicator/series fields when present."""
 
         response = client.messages.create(
-            model=settings.anthropic_model_summary,
+            model=settings.anthropic_model_measure,
             max_tokens=180,
             messages=[{"role": "user", "content": prompt}],
         )

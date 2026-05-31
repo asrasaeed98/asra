@@ -6,16 +6,39 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Callable
 
 import httpx
 
+from findings_api.catalog.socrata import (
+    is_socrata_query_url,
+    page_soql,
+    parse_query_url,
+    split_soql_limit,
+)
 from findings_api.config import settings
 
 logger = logging.getLogger(__name__)
 
+DownloadProgressCallback = Callable[[str], None]
+
 
 class DownloadError(Exception):
     pass
+
+
+def _raise_download_too_large(received_bytes: int) -> None:
+    cap_mb = settings.max_download_bytes // 1_000_000
+    received_mb = received_bytes / 1_000_000
+    raise DownloadError(
+        f"Download exceeds the {cap_mb}MB safety limit ({received_mb:.1f}MB received). "
+        "Try a smaller dataset or fewer columns."
+    )
+
+
+def _check_download_size(data: bytes) -> None:
+    if len(data) > settings.max_download_bytes:
+        _raise_download_too_large(len(data))
 
 
 # Query params that must never appear in logs or user-facing error messages.
@@ -108,31 +131,99 @@ async def _get_with_retry(
     ) from last_exc
 
 
+async def _post_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    source: str,
+    json_body: dict,
+    timeout: float = 120.0,
+) -> httpx.Response:
+    """POST JSON with retry/backoff on transient errors."""
+    attempts = max(1, settings.download_max_retries)
+    last_exc: Exception | None = None
+    resp: httpx.Response | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = await client.post(url, json=json_body, timeout=timeout)
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            last_exc = exc
+            resp = None
+            logger.warning(
+                "%s POST failed (attempt %s/%s): %s",
+                source,
+                attempt,
+                attempts,
+                redact_secrets(str(exc)),
+            )
+            if attempt < attempts:
+                await asyncio.sleep(_backoff_seconds(attempt))
+                continue
+            break
+
+        if resp.status_code in _RETRY_STATUS and attempt < attempts:
+            logger.warning(
+                "%s returned HTTP %s (attempt %s/%s); retrying",
+                source,
+                resp.status_code,
+                attempt,
+                attempts,
+            )
+            await asyncio.sleep(_backoff_seconds(attempt))
+            continue
+
+        return resp
+
+    if resp is not None:
+        return resp
+    raise DownloadError(
+        f"{source} is temporarily unavailable (network error after {attempts} attempts). "
+        "Please try again shortly."
+    ) from last_exc
+
+
 async def fetch_resource_bytes(
     url: str,
     *,
     client: httpx.AsyncClient | None = None,
     portal: str = "",
+    on_progress: DownloadProgressCallback | None = None,
+    title: str = "",
+    row_count_hint: int | None = None,
 ) -> tuple[bytes, str]:
     """Return body and a coarse content kind: csv | json | unknown."""
     if portal == "fred" or "api.stlouisfed.org/fred/" in url.lower():
         return await fetch_fred_json(url, client=client), "json"
 
     if portal == "world_bank" or "api.worldbank.org" in url.lower():
-        return await fetch_worldbank_json(url, client=client), "json"
+        return await fetch_worldbank_json(url, client=client, on_progress=on_progress), "json"
 
+    if portal == "nyc_open_data" or is_socrata_query_url(url):
+        return await fetch_socrata_json(
+            url,
+            client=client,
+            on_progress=on_progress,
+            title=title,
+            row_count_hint=row_count_hint,
+        ), "json"
+
+    timeout = (
+        settings.download_large_timeout_sec
+        if row_count_hint and row_count_hint >= settings.download_large_row_hint
+        else 120.0
+    )
     owns_client = client is None
     if owns_client:
         client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
     try:
-        resp = await _get_with_retry(client, url, source="The data source")
+        resp = await _get_with_retry(
+            client, url, source="The data source", timeout=timeout
+        )
         if resp.status_code >= 400:
             raise DownloadError(_friendly_http_error("The data source", resp.status_code))
         data = resp.content
-        if len(data) > settings.max_download_bytes:
-            raise DownloadError(
-                f"Download exceeds {settings.max_download_bytes // 1_000_000}MB cap"
-            )
+        _check_download_size(data)
         kind = _guess_kind(url, resp.headers.get("content-type"), data)
         return data, kind
     except httpx.HTTPError as exc:
@@ -142,7 +233,12 @@ async def fetch_resource_bytes(
             await client.aclose()
 
 
-async def fetch_worldbank_json(url: str, *, client: httpx.AsyncClient | None = None) -> bytes:
+async def fetch_worldbank_json(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    on_progress: DownloadProgressCallback | None = None,
+) -> bytes:
     """Paginate World Bank indicator API until all rows are fetched (within caps).
 
     Resilient pagination: each page is retried on transient failures. If a
@@ -230,6 +326,8 @@ async def fetch_worldbank_json(url: str, *, client: httpx.AsyncClient | None = N
                     len(all_rows),
                 )
                 break
+            if on_progress and page == 1:
+                on_progress(f"Downloading World Bank data ({len(all_rows):,} rows so far)…")
     except httpx.HTTPError as exc:
         raise DownloadError(redact_secrets(str(exc))) from exc
     finally:
@@ -269,16 +367,105 @@ async def fetch_fred_json(url: str, *, client: httpx.AsyncClient | None = None) 
         if resp.status_code >= 400:
             raise DownloadError(_friendly_http_error("FRED", resp.status_code))
         data = resp.content
-        if len(data) > settings.max_download_bytes:
-            raise DownloadError(
-                f"Download exceeds {settings.max_download_bytes // 1_000_000}MB cap"
-            )
+        _check_download_size(data)
         payload = json.loads(data.decode("utf-8"))
         if payload.get("error_code"):
             raise DownloadError(
                 redact_secrets(payload.get("error_message") or "FRED API error")
             )
         return data
+    except httpx.HTTPError as exc:
+        raise DownloadError(redact_secrets(str(exc))) from exc
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+async def fetch_socrata_json(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    on_progress: DownloadProgressCallback | None = None,
+    title: str = "",
+    row_count_hint: int | None = None,
+) -> bytes:
+    """Download rows from a SODA3 query URL in paginated chunks (reliable up to byte cap)."""
+    _base, _dataset_id, soql = parse_query_url(url)
+    endpoint = url.split("?", 1)[0]
+    base_query, parsed_limit = split_soql_limit(soql)
+    row_target = min(parsed_limit or settings.row_cap, settings.row_cap)
+    chunk_size = max(1, settings.socrata_download_chunk_rows)
+
+    owns_client = client is None
+    if owns_client:
+        client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
+
+    all_rows: list[dict] = []
+    offset = 0
+
+    try:
+        while len(all_rows) < row_target:
+            take = min(chunk_size, row_target - len(all_rows))
+            page_query = page_soql(base_query, limit=take, offset=offset)
+            resp = await _post_with_retry(
+                client,
+                endpoint,
+                source="NYC Open Data",
+                json_body={"query": page_query},
+                timeout=settings.download_chunk_timeout_sec,
+            )
+            if resp.status_code >= 400:
+                if all_rows:
+                    logger.warning(
+                        "Socrata pagination stopped at offset %s (HTTP %s); returning %s rows",
+                        offset,
+                        resp.status_code,
+                        len(all_rows),
+                    )
+                    break
+                raise DownloadError(_friendly_http_error("NYC Open Data", resp.status_code))
+
+            page_data = resp.content
+            _check_download_size(page_data)
+            page_rows = json.loads(page_data.decode("utf-8", errors="replace"))
+            if not isinstance(page_rows, list):
+                raise DownloadError("NYC Open Data returned an unexpected response.")
+            if not page_rows:
+                break
+
+            trial = all_rows + page_rows
+            encoded = json.dumps(trial).encode("utf-8")
+            if len(encoded) > settings.max_download_bytes:
+                logger.warning(
+                    "Socrata download truncated at %s rows (byte cap %sMB)",
+                    len(all_rows),
+                    settings.max_download_bytes // 1_000_000,
+                )
+                break
+
+            all_rows = trial
+            offset += len(page_rows)
+
+            if on_progress:
+                from findings_api.ingest.download_policy import download_progress_message
+
+                on_progress(download_progress_message(rows_done=len(all_rows), row_target=row_target))
+
+            if len(page_rows) < take:
+                break
+
+        if not all_rows:
+            raise DownloadError("NYC Open Data query returned no rows")
+
+        result = json.dumps(all_rows).encode("utf-8")
+        _check_download_size(result)
+        logger.info(
+            "Socrata download complete%s: %s rows, %.1fMB",
+            f" ({title})" if title else "",
+            len(all_rows),
+            len(result) / 1_000_000,
+        )
+        return result
     except httpx.HTTPError as exc:
         raise DownloadError(redact_secrets(str(exc))) from exc
     finally:

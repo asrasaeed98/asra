@@ -199,10 +199,12 @@ def _ingest_estimate(session) -> int | None:
     pct = session.percent or 0
     if pct >= 100:
         return 0
+    large = bool((session.config or {}).get("large_download"))
     if pct <= 0:
-        return 120
-    # Rough linear estimate from progress so far
-    return max(15, int((100 - pct) * 1.5))
+        return 300 if large else 120
+    scale = 3.0 if large else 1.5
+    floor = 45 if large else 15
+    return max(floor, int((100 - pct) * scale))
 
 
 @router.get("/{session_id}/status", response_model=SessionStatusResponse)
@@ -250,6 +252,11 @@ def session_results(session_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Session not found")
     preview = session.preview or {}
     results = preview.get("results") or {}
+    catalogs = []
+    for rid in session.resource_ids or []:
+        row = db.get(CatalogResource, rid)
+        if row:
+            catalogs.append(_to_result(row))
     return {
         "session_id": session_id,
         "status": session.status,
@@ -268,6 +275,7 @@ def session_results(session_id: str, db: Session = Depends(get_db)):
         "chat": _chat_state(preview, db),
         "message": session.message,
         "preview": session.preview,
+        "catalogs": catalogs,
     }
 
 
@@ -318,7 +326,16 @@ def session_chat(
     if not question:
         raise HTTPException(status_code=422, detail="Message cannot be empty")
 
-    result = generate_chat_reply(results, messages, question)
+    conn = None
+    try:
+        if session.duckdb_path:
+            from findings_api.ingest.duckdb_store import connect
+
+            conn = connect(session_id)
+        result = generate_chat_reply(results, messages, question, conn=conn)
+    finally:
+        if conn is not None:
+            conn.close()
     record_usage(
         db,
         settings.anthropic_model_chat,

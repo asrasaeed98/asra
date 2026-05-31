@@ -64,7 +64,9 @@ def default_attribution(portal: str, title: str, publisher: str, source_url: str
         )
     if portal == "fred":
         return (
-            f"Source: {publisher} via FRED — {title}. "
-            f"{source_url}. Citation requested."
+            f"Source: {title}. Retrieved from FRED, Federal Reserve Bank of St. Louis; "
+            f"{source_url}."
         )
+    if portal == "nyc_open_data":
+        return f"Source: NYC Open Data — {title}. {source_url}"
     return f"Source: {publisher}. {source_url}"

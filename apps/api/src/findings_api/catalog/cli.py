@@ -7,8 +7,11 @@ import asyncio
 import logging
 import sys
 
+import httpx
+
 from findings_api.catalog.probe_batch import run_probe_batch
 from findings_api.catalog.sync_all import run_full_sync
+from findings_api.catalog.sync_nyc_open_data import sync_nyc_open_data
 from findings_api.config import settings
 from findings_api.db import get_session_factory, init_db
 
@@ -21,6 +24,16 @@ async def _run_sync() -> dict[str, int]:
     db = get_session_factory()()
     try:
         return await run_full_sync(db)
+    finally:
+        db.close()
+
+
+async def _run_sync_nyc() -> int:
+    init_db()
+    db = get_session_factory()()
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
+            return await sync_nyc_open_data(db, client)
     finally:
         db.close()
 
@@ -39,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("sync", help="Full catalog sync (data.gov + World Bank + FRED)")
+
+    sub.add_parser("sync-nyc", help="NYC Open Data sync only (Socrata, separate from main sync)")
 
     probe_p = sub.add_parser("probe", help="Probe a batch of pending catalog rows")
     probe_p.add_argument(
@@ -66,6 +81,13 @@ def main(argv: list[str] | None = None) -> int:
         counts = asyncio.run(_run_sync())
         logger.info("Sync complete: %s", counts)
         print("SYNC_DONE", counts)
+        return 0
+
+    if args.command == "sync-nyc":
+        logger.info("Starting NYC Open Data catalog sync")
+        count = asyncio.run(_run_sync_nyc())
+        logger.info("NYC sync complete: %s datasets indexed", count)
+        print("NYC_SYNC_DONE", count)
         return 0
 
     if args.command == "probe":

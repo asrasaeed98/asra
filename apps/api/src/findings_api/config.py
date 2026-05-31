@@ -28,8 +28,9 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     anthropic_api_key: str = ""
-    anthropic_model_summary: str = "claude-haiku-4-5"
+    anthropic_model_summary: str = "claude-opus-4-6"
     anthropic_model_chat: str = "claude-sonnet-4-6"
+    anthropic_model_measure: str = "claude-haiku-4-5"
     catalog_api_base: str = "https://catalog.data.gov"
     data_gov_ckan_api: str = "https://catalog.data.gov/api/3/action"
     row_cap: int = 100_000
@@ -57,6 +58,9 @@ class Settings(BaseSettings):
     fred_api_key: str = ""
     fred_sync_max_series: int = 150
     fred_sync_max_indexed: int = 0
+    nyc_open_data_base: str = "https://data.cityofnewyork.us"
+    nyc_sync_max_ingestible: int = 20
+    nyc_sync_max_indexed: int = 0
     catalog_sync_interval_hours: float = 0
     catalog_sync_run_on_startup: bool = False
     catalog_sync_prune_enabled: bool = False
@@ -65,14 +69,20 @@ class Settings(BaseSettings):
     admin_sync_token: str = ""
     app_display_name: str = "Findings"
     session_data_dir: str = "./session_data"
-    max_download_bytes: int = 50_000_000
+    max_download_bytes: int = 100_000_000
     download_max_retries: int = 3
     download_backoff_base_sec: float = 0.5
+    download_chunk_timeout_sec: float = 180.0
+    download_large_timeout_sec: float = 300.0
+    socrata_download_chunk_rows: int = 10_000
+    download_large_row_hint: int = 50_000
     chat_max_questions: int = 5
     chat_max_tokens: int = 400
     chat_history_turns: int = 4
     chat_max_message_chars: int = 1000
     chat_context_char_cap: int = 16000
+    chat_query_max_rows: int = 25
+    chat_max_query_rounds: int = 1
     # Hard ceiling on Anthropic spend per calendar month (USD). <= 0 disables the cap.
     ai_monthly_budget_usd: float = 100.0
 

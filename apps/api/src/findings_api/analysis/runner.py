@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from findings_api.analysis.ai_summary import generate_ai_summary
 from findings_api.analysis.ai_usage import is_over_budget, record_usage
 from findings_api.analysis.charts import charts_for_findings
+from findings_api.analysis.cross_measure import run_cross_measure_analysis
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
+from findings_api.analysis.mode import resolve_analysis_mode, table_sets_for_mode
 from findings_api.analysis.join import (
     assess_join_on,
     auto_join_selection,
@@ -24,6 +26,7 @@ from findings_api.analysis.methods import summarize_methods_run
 from findings_api.analysis.narrative import enrich_findings
 from findings_api.analysis.ranker import DISPLAY_TOP, apply_ranking_context, rank_findings, select_display_findings
 from findings_api.analysis.selector import plans_for_table
+from findings_api.analysis.summary_context import build_summary_context
 from findings_api.analysis.tests.chi_square import run_chi_square
 from findings_api.analysis.tests.correlation import run_correlation
 from findings_api.analysis.tests.group_comparison import run_group_comparison
@@ -173,8 +176,10 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 )
             )
 
+        analysis_mode = resolve_analysis_mode(len(tables))
+
         auto_joined = False
-        if len(tables) == 2 and not join_pairs:
+        if analysis_mode == "compare" and not join_pairs:
             ingest_profiles: list[dict] = []
             for table, _, _ in tables:
                 for item in datasets:
@@ -194,7 +199,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         target_table = tables[0][0]
         join_report = None
         joined_measure_contexts: dict[str, dict[str, str | None]] = {}
-        if len(tables) == 2 and join_pairs:
+        if analysis_mode == "compare" and join_pairs:
             _set_progress(db, session, phase="join", message="Combining datasets", percent=30)
             left_t, right_t = tables[0][0], tables[1][0]
             ok, matched, warning, overlap_left, overlap_right = assess_join_on(
@@ -262,39 +267,45 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     "auto": auto_joined,
                 }
 
-        analyze_tables = (
-            [target_table]
-            if target_table == "analysis_joined" and not (join_report and join_report.get("warning"))
-            else [t[0] for t in tables]
-        )
-
         joined_ok = bool(
-            join_report
+            analysis_mode == "compare"
+            and join_report
             and int(join_report.get("matched_rows") or 0) >= 8
             and not join_report.get("warning")
         )
 
+        joined_table = "analysis_joined" if joined_ok else None
+        table_names = [t[0] for t in tables]
+        context_tables, test_tables = table_sets_for_mode(
+            mode=analysis_mode,
+            table_names=table_names,
+            joined_table=joined_table,
+            joined_ok=joined_ok,
+        )
+
         profiles = []
-        for table in analyze_tables:
+        test_table_set = set(test_tables)
+        for table in context_tables:
             rid, title = table_meta.get(table, ("", "Dataset"))
             extra_contexts = (
                 joined_measure_contexts if table == "analysis_joined" else None
             )
-            profiles.append(
-                profile_table(
-                    conn,
-                    table,
-                    resource_id=rid,
-                    title=title,
-                    extra_measure_contexts=extra_contexts,
-                )
+            profile = profile_table(
+                conn,
+                table,
+                resource_id=rid,
+                title=title,
+                extra_measure_contexts=extra_contexts,
             )
+            profiles.append(profile)
 
         _set_progress(db, session, phase="analyze", message="Running statistical tests", percent=50)
         findings: list[Finding] = []
         tests_planned = 0
         offset = 0
         for profile in profiles:
+            if profile.table not in test_table_set:
+                continue
             table_joined = joined_ok and profile.table == "analysis_joined"
             plans = plans_for_table(profile, joined=table_joined)
             primary_plans = [
@@ -348,16 +359,50 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 findings.extend(run_ml_suite(conn, profile, finding_offset=offset))
                 offset = len(findings)
 
+        cross_measure_result = None
+        if analysis_mode == "compare":
+            left_t, right_t = tables[0][0], tables[1][0]
+            rid_a, title_a = table_meta[left_t]
+            rid_b, title_b = table_meta[right_t]
+            cross_measure_result = run_cross_measure_analysis(
+                conn,
+                left_t,
+                right_t,
+                left_resource_id=rid_a,
+                right_resource_id=rid_b,
+                left_title=title_a,
+                right_title=title_b,
+                finding_offset=offset,
+            )
+            findings.extend(cross_measure_result.findings)
+            if join_report is None:
+                join_report = {}
+            join_report["cross_measure"] = cross_measure_result.report
+
+        relationship_ok = analysis_mode == "compare" and (
+            joined_ok
+            or bool(cross_measure_result and cross_measure_result.paired_ok)
+        )
+
         if joined_ok:
             for finding in findings:
-                if finding.type == "spearman_correlation":
+                if finding.type == "spearman_correlation" and not (finding.details or {}).get(
+                    "cross_measure"
+                ):
                     finding.details = dict(finding.details or {})
                     finding.details["primary"] = True
 
         ranked_candidates = [f for f in findings if f.type != "descriptive"]
-        apply_ranking_context(ranked_candidates, joined=joined_ok)
+        apply_ranking_context(
+            ranked_candidates,
+            compare_mode=relationship_ok,
+        )
         ranked_all = enrich_findings(rank_findings(ranked_candidates))
-        display = select_display_findings(ranked_all, DISPLAY_TOP, joined=joined_ok)
+        display = select_display_findings(
+            ranked_all,
+            DISPLAY_TOP,
+            compare_mode=relationship_ok,
+        )
         if not ranked_all:
             desc_offset = 0
             for profile in profiles:
@@ -366,13 +411,18 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             ranked_all = enrich_findings(rank_findings(ranked_all))
             display = select_display_findings(ranked_all, min(DISPLAY_TOP, len(ranked_all)))
 
-        charts = charts_for_findings(conn, display, joined=joined_ok)
+        charts = charts_for_findings(conn, display, joined=relationship_ok)
         statistical_hits = len([f for f in ranked_all if f.type != "descriptive"])
+        cross_measure_report = (
+            cross_measure_result.report if cross_measure_result else None
+        )
         notes = analysis_notes(
             profiles,
             tests_planned=tests_planned,
             statistical_hits=statistical_hits,
             total_findings=len(ranked_all),
+            cross_measure_report=cross_measure_report,
+            analysis_mode=analysis_mode,
         )
 
         column_glossary = glossary_for_columns(
@@ -385,14 +435,37 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
         )
 
         _set_progress(db, session, phase="finalize", message="Writing summary", percent=92)
-        display_dicts = [f.to_dict() for f in display]
-        dataset_titles = [p.title for p in profiles]
-        facts_context = json.dumps([p.facts for p in profiles if p.facts], default=str)
-        ai_summary, ai_summary_source, ai_summary_blocks, ai_summary_fallback_reason = generate_ai_summary(
-            display_dicts,
+        methods_run = summarize_methods_run(
+            profiles,
+            ml_enabled=ml_enabled,
+            analysis_mode=analysis_mode,
+            joined_ok=joined_ok,
+            cross_measure_ran=analysis_mode == "compare",
+        )
+        analysis_overview = {
+            "analysis_mode": analysis_mode,
+            "tests_planned": tests_planned,
+            "statistical_findings": len(ranked_all),
+            "total_findings": len(ranked_all),
+            "display_count": len(display),
+            "ml_enabled": ml_enabled,
+            "notes": notes,
+        }
+        summary_context = build_summary_context(
+            db,
+            conn,
+            profiles=profiles,
+            all_findings=ranked_all,
+            display_finding_ids=[f.id for f in display],
             user_intent=session.user_intent,
-            dataset_titles=dataset_titles,
-            extra_context=facts_context,
+            join_report=join_report,
+            methods_run=methods_run,
+            analysis_overview=analysis_overview,
+            column_glossary=column_glossary,
+            charts=charts,
+        )
+        ai_summary, ai_summary_source, ai_summary_blocks, ai_summary_fallback_reason = generate_ai_summary(
+            summary_context,
             allow_ai=not is_over_budget(db),
             on_usage=lambda model, tin, tout: record_usage(db, model, tin, tout),
         )
@@ -410,7 +483,8 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             "display_finding_ids": [f.id for f in display],
             "charts": [c.to_dict() for c in charts],
             "join_report": join_report,
-            "analysis_tables": analyze_tables,
+            "analysis_mode": analysis_mode,
+            "analysis_tables": context_tables,
             "column_glossary": column_glossary,
             "ai_summary": ai_summary,
             "ai_summary_blocks": ai_summary_blocks,
@@ -418,16 +492,13 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             "ai_summary_fallback_reason": ai_summary_fallback_reason,
             "dataset_facts": [p.facts for p in profiles if p.facts],
             "analysis_report": {
+                "analysis_mode": analysis_mode,
                 "tests_planned": tests_planned,
                 "statistical_findings": len(ranked_all),
                 "display_limit": DISPLAY_TOP,
                 "display_count": len(display),
                 "total_findings": len(ranked_all),
-                "methods_run": summarize_methods_run(
-                    profiles,
-                    ml_enabled=ml_enabled,
-                    joined_ok=joined_ok,
-                ),
+                "methods_run": methods_run,
                 "ml_enabled": ml_enabled,
                 "datasets": [
                     {
