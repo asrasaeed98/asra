@@ -1,0 +1,26 @@
+---
+description: Use GitHub-verified email for all git commits (required for Vercel deploys)
+alwaysApply: true
+---
+
+# Git commit author email
+
+Vercel blocks deploys when commit email is not linked to GitHub.
+
+**Always use this author/committer email for commits in this repo:**
+- Email: `asra.saeed@outlook.com`
+- Name: `Asra Saeed`
+
+When committing via shell, set env vars explicitly:
+
+```bash
+GIT_AUTHOR_NAME="Asra Saeed" \
+GIT_AUTHOR_EMAIL="asra.saeed@outlook.com" \
+GIT_COMMITTER_NAME="Asra Saeed" \
+GIT_COMMITTER_EMAIL="asra.saeed@outlook.com" \
+git commit ...
+```
+
+Never commit with auto-generated hostname emails (e.g. `*@*.ht.home`).
+
+Do not change global git config; the repo has local `user.email` / `user.name` set.
