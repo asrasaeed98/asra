@@ -22,7 +22,7 @@ from findings_api.licensing import (
     default_attribution,
     is_allowed,
 )
-from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, max_indexed, should_probe
+from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, build_search_text, max_indexed, should_probe
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,6 @@ WB_API = "https://api.worldbank.org/v2/indicator"
 LICENSE_NORM = "CC_BY"
 
 
-def _build_search_text(title: str, desc: str, org: str, tags: list[str]) -> str:
-    return " ".join(filter(None, [title, desc, org, " ".join(tags)])).lower()
 
 
 async def _fetch_indicator_meta(client: httpx.AsyncClient, ind_id: str) -> dict | None:
@@ -125,7 +123,7 @@ async def _index_indicator(
         byte_size=None,
         row_count_hint=None,
         updated_at=datetime.now(timezone.utc),
-        search_text=_build_search_text(name, desc, org, tags),
+        search_text=build_search_text(name, desc, org, tags),
         ingestible=False,
     )
     if not settings.catalog_probe_enabled:

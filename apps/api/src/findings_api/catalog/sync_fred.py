@@ -18,7 +18,7 @@ from findings_api.licensing import (
     default_attribution,
     is_allowed,
 )
-from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, max_indexed, should_probe
+from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, build_search_text, max_indexed, should_probe
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -64,8 +64,6 @@ SEARCH_QUERIES = (
 )
 
 
-def _build_search_text(title: str, desc: str, org: str, tags: list[str]) -> str:
-    return " ".join(filter(None, [title, desc, org, " ".join(tags)])).lower()
 
 
 def _observations_url(series_id: str) -> str:
@@ -134,7 +132,7 @@ async def _index_series(
         row_count_hint=None,
         byte_size=None,
         updated_at=datetime.now(timezone.utc),
-        search_text=_build_search_text(title, notes, org, tags + [series_id]),
+        search_text=build_search_text(title, notes, org, tags + [series_id]),
         ingestible=False,
     )
 

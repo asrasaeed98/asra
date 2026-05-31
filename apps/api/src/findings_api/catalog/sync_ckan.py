@@ -18,6 +18,7 @@ from findings_api.licensing import (
     is_allowed,
     normalize_license,
 )
+from findings_api.catalog.sync_limits import build_search_text
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -31,9 +32,6 @@ CKAN_QUERIES = (
     "license_id:cc-zero economy",
 )
 
-
-def _build_search_text(title: str, desc: str, org: str, tags: list[str]) -> str:
-    return " ".join(filter(None, [title, desc, org, " ".join(tags)])).lower()
 
 
 def _package_license(pkg: dict) -> str | None:
@@ -146,7 +144,7 @@ async def sync_ckan(session: Session, client: httpx.AsyncClient) -> int:
                         row_count_hint=None,
                         byte_size=res.get("size"),
                         updated_at=datetime.now(timezone.utc),
-                        search_text=_build_search_text(title, desc, org, tags),
+                        search_text=build_search_text(title, desc, org, tags),
                         ingestible=False,
                     )
                     if settings.catalog_probe_enabled:
