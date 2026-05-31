@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 import pandas as pd
 from sklearn.cluster import DBSCAN, KMeans
@@ -12,12 +13,14 @@ from sklearn.metrics import silhouette_score
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 
-from findings_api.analysis.profile import read_table_frame, sql_ident
+from findings_api.analysis.profile import sql_ident
 from findings_api.analysis.types import Finding, TableProfile
 
 _MIN_ML_ROWS = 50
 _ML_ROW_GATE = 200
-_ML_MAX_ROWS = 8_000
+_ML_MAX_ROWS = 5_000
+_ML_STEP_TIMEOUT_SEC = 90
+_HEAVY_ML_ROW_CAP = 12_000
 _RANDOM_STATE = 42
 _MIN_SILHOUETTE = 0.15
 _MIN_PCA_VARIANCE = 0.25
@@ -30,12 +33,30 @@ def _score(value: float, *, p_value: float | None = None) -> float:
 
 
 def _numeric_frame(conn, table: str, numeric_cols: list[str]) -> tuple[pd.DataFrame, list[str]]:
-    df = read_table_frame(conn, table)
-    if len(df) > _ML_MAX_ROWS:
-        df = df.sample(n=_ML_MAX_ROWS, random_state=_RANDOM_STATE)
-    cols = [c for c in numeric_cols if c in df.columns][:8]
-    work = df[cols].apply(pd.to_numeric, errors="coerce").dropna()
+    """Load numeric columns only — avoid full-table read_table_frame on large NYC pulls."""
+    cols = [c for c in numeric_cols[:8]]
+    if len(cols) < 2:
+        return pd.DataFrame(), cols
+    table_sql = sql_ident(table)
+    col_sql = ", ".join(sql_ident(c) for c in cols)
+    total = int(conn.execute(f"SELECT count(*) FROM {table_sql}").fetchone()[0] or 0)
+    if total > _ML_MAX_ROWS:
+        query = f"SELECT {col_sql} FROM {table_sql} USING SAMPLE {_ML_MAX_ROWS} ROWS"
+    else:
+        query = f"SELECT {col_sql} FROM {table_sql}"
+    df = conn.execute(query).fetchdf()
+    work = df.apply(pd.to_numeric, errors="coerce").dropna()
     return work, cols
+
+
+def _run_ml_step(runner: Callable[..., list[Finding]], /, *args, **kwargs) -> list[Finding]:
+    """Cap wall time per ML model so large NYC sessions cannot hang indefinitely."""
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(runner, *args, **kwargs)
+        try:
+            return future.result(timeout=_ML_STEP_TIMEOUT_SEC)
+        except FuturesTimeoutError:
+            return []
 
 
 def run_clustering(
@@ -302,17 +323,20 @@ def run_ml_suite(
     """Run all ML models after primary statistical tests."""
     findings: list[Finding] = []
     offset = finding_offset
-    runners = (
-        ("clustering", run_clustering),
-        ("density scan", run_dbscan),
-        ("PCA", run_pca_structure),
-        ("anomaly detection", run_anomaly),
-        ("outlier scan", run_lof_anomaly),
+    runners: tuple[tuple[str, Callable[..., list[Finding]], bool], ...] = (
+        ("clustering", run_clustering, False),
+        ("density scan", run_dbscan, True),
+        ("PCA", run_pca_structure, False),
+        ("anomaly detection", run_anomaly, False),
+        ("outlier scan", run_lof_anomaly, True),
     )
-    for label, runner in runners:
+    for label, runner, heavy in runners:
+        if heavy and profile.n_rows > _HEAVY_ML_ROW_CAP:
+            continue
         if on_step:
             on_step(label)
-        batch = runner(
+        batch = _run_ml_step(
+            runner,
             conn,
             profile.table,
             profile.numeric,
