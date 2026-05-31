@@ -102,7 +102,7 @@ export function VegaChart({ spec, title }: VegaChartProps) {
   return (
     <div
       ref={ref}
-      className="mx-auto w-full min-w-0 max-w-[18rem] overflow-x-auto sm:max-w-none [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
+      className="w-full min-w-0 overflow-x-auto [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
       role="img"
       aria-label={title}
     />

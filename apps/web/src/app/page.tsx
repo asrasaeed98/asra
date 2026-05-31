@@ -156,7 +156,7 @@ export default function Home() {
             />
           </div>
 
-          <div className="mx-auto w-full max-w-[17rem] overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm sm:max-w-none">
+          <div className="overflow-hidden rounded-2xl border border-[#e8ddd0] bg-white shadow-sm">
             <Image
               src="/home/chart-literacy-internet.png"
               alt="Scatter chart showing moderate positive association between adult literacy rate and internet usage, Spearman r = 0.63"
