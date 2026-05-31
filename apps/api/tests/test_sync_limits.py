@@ -1,4 +1,4 @@
-from findings_api.catalog.sync_limits import build_search_text, max_indexed, should_probe
+from findings_api.catalog.sync_limits import build_search_text, clamp_str, max_indexed, should_probe
 from findings_api.config import settings
 
 
@@ -19,3 +19,8 @@ def test_build_search_text_caps_index_size():
     long_desc = "word " * 2000
     text = build_search_text("title", long_desc, "org", ["tag"])
     assert len(text.encode("utf-8")) <= 2500
+
+
+def test_clamp_str_truncates():
+    assert clamp_str("x" * 600, 512) == "x" * 512
+    assert clamp_str("short", 512) == "short"

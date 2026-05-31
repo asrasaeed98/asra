@@ -19,6 +19,13 @@ def build_search_text(title: str, desc: str, org: str, tags: list[str]) -> str:
     return encoded[:SEARCH_TEXT_MAX_BYTES].decode("utf-8", errors="ignore").rstrip()
 
 
+def clamp_str(value: str | None, max_len: int) -> str | None:
+    """Truncate strings to fit VARCHAR columns."""
+    if not value or len(value) <= max_len:
+        return value
+    return value[:max_len]
+
+
 def max_indexed(ingestible_cap: int, indexed_cap: int) -> int:
     """Total metadata rows to store; defaults to ingestible cap when indexed cap is 0."""
     return indexed_cap if indexed_cap > 0 else ingestible_cap

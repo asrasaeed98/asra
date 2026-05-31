@@ -22,7 +22,7 @@ from findings_api.licensing import (
     default_attribution,
     is_allowed,
 )
-from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, build_search_text, max_indexed, should_probe
+from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, build_search_text, clamp_str, max_indexed, should_probe
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ async def _index_indicator(
 
     source = row.get("source") or {}
     source_name = source.get("value") if isinstance(source, dict) else str(source)
-    org = row.get("sourceOrganization") or source_name or "World Bank"
+    org = clamp_str(str(row.get("sourceOrganization") or source_name or "World Bank"), 512)
     topics = row.get("topics") or []
     tags = [t.get("value", "") for t in topics if isinstance(t, dict) and t.get("value")]
 
@@ -99,7 +99,7 @@ async def _index_indicator(
     rec = CatalogResource(
         id=f"wb:{ind_id}",
         portal="world_bank",
-        title=name.strip(),
+        title=clamp_str(name.strip(), 512) or name.strip()[:512],
         description=desc or None,
         organization=org,
         tags=tags,
