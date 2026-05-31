@@ -1,0 +1,15 @@
+# Keep CLI uploads small — web deploy only needs apps/web (+ shared root files).
+apps/api
+.venv
+venv
+data
+session_data
+*.duckdb
+findings_local.db
+*.db
+*.db-shm
+*.db-wal
+htmlcov
+.pytest_cache
+.coverage
+.git

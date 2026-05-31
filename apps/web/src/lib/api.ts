@@ -1,4 +1,22 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const PROD_API = "https://asra-production.up.railway.app";
+
+function resolveApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (process.env.VERCEL) {
+    return PROD_API;
+  }
+  if (typeof window !== "undefined") {
+    const { hostname } = window.location;
+    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+      return PROD_API;
+    }
+  }
+  return "http://127.0.0.1:8000";
+}
+
+const API_BASE = resolveApiBase();
 
 export type CatalogResult = {
   id: string;
