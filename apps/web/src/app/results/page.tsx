@@ -234,7 +234,9 @@ function ResultsContent() {
         </p>
       </section>
 
-      {/* 2. Analysis report */}
+      <ChatPanel sessionId={sessionId} initial={data.chat} />
+
+      {/* Analysis report */}
       {report && (
         <section className="mt-6 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-semibold text-stone-800">Analysis report</h2>
@@ -269,7 +271,7 @@ function ResultsContent() {
         </section>
       )}
 
-      {/* 3. Key results (computed cards + visuals — the evidence) */}
+      {/* Key results (computed cards — the evidence) */}
       <section className="mt-8 rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5" id="key-results">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-stone-800">Key results</h2>
@@ -341,14 +343,12 @@ function ResultsContent() {
               ? " Scatter charts show both measures on the same joined rows."
               : null}
           </p>
-          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+          <div className="mt-4 flex flex-col gap-6">
             {data.charts.map((chart) => (
               <article
                 key={chart.id}
                 id={`chart-${chart.finding_id}`}
-                className={`rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4 ${
-                  chart.type === "scatter" ? "lg:col-span-2" : ""
-                }`}
+                className="rounded-lg border border-[#f0e8de] bg-[#faf8f5] p-4"
               >
                 <h3 className="text-sm font-medium text-stone-800">{chart.title}</h3>
                 <p className="mt-0.5 text-xs capitalize text-stone-500">{chart.type} chart</p>
@@ -360,9 +360,6 @@ function ResultsContent() {
           </div>
         </section>
       )}
-
-      {/* 3. Grounded chat (after the evidence, so questions are informed) */}
-      <ChatPanel sessionId={sessionId} initial={data.chat} />
 
       <footer className="mt-8 border-t border-[#e8ddd0] pt-4 text-xs text-stone-400">
         <p>Session {sessionId}</p>

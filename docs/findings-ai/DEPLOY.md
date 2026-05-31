@@ -1,5 +1,13 @@
 # Deploy — prototype (Vercel + Railway)
 
+## Status (prod)
+
+| Component | Status | URL |
+|-----------|--------|-----|
+| API + Postgres | Live | https://asra-production.up.railway.app |
+| Catalog automation | GitHub Actions | [Catalog workflow](../../.github/workflows/catalog.yml) |
+| Web (Next.js) | Live (Git → Vercel **asra**) | https://asra-eight.vercel.app |
+
 ## Recommended layout
 
 | Service | Host | Path |
@@ -9,30 +17,50 @@
 | Postgres | Railway plugin | — |
 | Redis | Railway plugin (later worker) | — |
 
+## Finish deployment (web + CORS)
+
+API and catalog automation are done. Remaining step is Vercel:
+
+```bash
+npm run setup:vercel-deploy
+# After Vercel gives you a URL:
+npm run setup:vercel-deploy -- https://YOUR-APP.vercel.app
+npm run finish:deploy -- https://YOUR-APP.vercel.app
+```
+
+Or `./scripts/railway-cors.sh https://YOUR-APP.vercel.app` alone to allow the web origin on the API.
+
 ## Vercel (web)
 
 1. Import GitHub repo `asrasaeed98/asra`
 2. Root directory: **`apps/web`**
-3. Environment: `NEXT_PUBLIC_API_URL=https://<your-railway-api>.up.railway.app`
-4. Optional: `NEXT_PUBLIC_APP_NAME=FunFinds`
+3. Environment (Production):
+   - `NEXT_PUBLIC_API_URL=https://asra-production.up.railway.app`
+   - `NEXT_PUBLIC_APP_NAME=Findings` (optional)
+4. Deploy, then run `npm run setup:vercel-deploy -- <your-vercel-url>`
 
 ## Railway (API)
 
-1. New service from repo, root: **`apps/api`**
-2. Start command: `uvicorn findings_api.main:app --host 0.0.0.0 --port $PORT`
-3. Variables:
-   - `DATABASE_URL` (Postgres from Railway)
-   - `REDIS_URL`
-   - `ANTHROPIC_API_KEY` (secret)
-   - `CORS_ORIGINS=https://<your-vercel-app>.vercel.app`
-4. After deploy: set up catalog automation — see **[CATALOG_AUTOMATION.md](./CATALOG_AUTOMATION.md)** (GitHub Actions weekly sync + daily grow; fits Hobby ~$5/mo)
+Already deployed as **asra** on project **faithful-radiance**.
 
-Quick one-time fill from your machine:
+Variables to verify on Railway **asra**:
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Postgres (internal URL) |
+| `ANTHROPIC_API_KEY` | Analysis / chat |
+| `FRED_API_KEY` | Catalog sync |
+| `CORS_ORIGINS` | Must include your Vercel URL (see `scripts/railway-cors.sh`) |
+
+Catalog automation: **[CATALOG_AUTOMATION.md](./CATALOG_AUTOMATION.md)** (GitHub Actions; not Railway cron).
+
+Quick catalog ops from your machine:
 
 ```bash
 ./scripts/railway-catalog.sh sync
 ./scripts/railway-catalog.sh grow
 npm run smoke:catalog
+./scripts/catalog-bootstrap-prod.sh   # copy local DB catalog → prod
 ```
 
 See [DATA_SOURCES.md](./DATA_SOURCES.md) for scaling toward large catalogs (100k–1M metadata rows).
@@ -44,7 +72,14 @@ See [DATA_SOURCES.md](./DATA_SOURCES.md) for scaling toward large catalogs (100k
 
 ## Post-deploy smoke test
 
+```bash
+npm run finish:deploy
+# with web:
+npm run finish:deploy -- https://YOUR-APP.vercel.app
+```
+
+Manual checks:
+
 1. `GET /health` → ok
-2. `POST /admin/sync` → indexed rows > 0
-3. `GET /search?q=gdp` → results with `source_url` and `attribution_text`
-4. Open Vercel URL → search page loads
+2. `GET /search?q=gdp` → results with `source_url` and `attribution_text`
+3. Open Vercel URL → `/search` loads and queries work (no CORS errors)

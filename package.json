@@ -14,6 +14,8 @@
     "health:catalog:prod": "scripts/railway-catalog.sh health",
     "smoke:catalog": "scripts/catalog-smoke.sh",
     "setup:github-catalog": "scripts/github-catalog-secrets.sh",
+    "setup:vercel-deploy": "scripts/setup-vercel-deploy.sh",
+    "finish:deploy": "scripts/finish-prod-deploy.sh",
     "build:web": "npm run build --prefix apps/web",
     "test:api": "cd apps/api && pytest"
   },

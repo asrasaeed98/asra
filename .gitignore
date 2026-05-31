@@ -37,3 +37,4 @@ findings_local.db
 apps/api/findings_local.db
 *.db-shm
 *.db-wal
+.vercel
