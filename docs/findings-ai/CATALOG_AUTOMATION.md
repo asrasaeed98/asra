@@ -20,6 +20,17 @@ cd /path/to/asra
 ./scripts/railway-catalog.sh sync 2>&1 | tee /tmp/prod-sync.log
 ./scripts/railway-catalog.sh grow
 ./scripts/catalog-smoke.sh
+
+To copy an existing local catalog (e.g. after dev sync) without re-running sync:
+
+```bash
+./scripts/catalog-bootstrap-prod.sh
+```
+
+Smoke again:
+
+```bash
+./scripts/catalog-smoke.sh
 ```
 
 Or trigger GitHub Actions → **Catalog** → **Run workflow** → `sync`, then `grow`.
@@ -89,11 +100,15 @@ GitHub → **Actions** → **Catalog** for job pass/fail.
 
 Railway → **Usage** to stay within $5 included credit.
 
+## Safe sync (production)
+
+Portal sync is **upsert-first**: rows are inserted/updated during the run. **Prune** (`prune_stale_portal_rows`) runs only after a successful **uncapped** full pass for that portal, removing IDs missing from the final `seen_ids` set. There is no delete-at-start, so an aborted GitHub Action or local sync does not wipe the catalog.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|--------|-----|
-| `catalog_count: 0` after aborted sync | Sync deletes portal rows first | Re-run full sync to completion |
+| `catalog_count: 0` after aborted sync | Rare: prune only runs after a **completed** uncapped full pass; sync is upsert-first | Re-run full sync to completion; stale rows are not removed mid-run |
 | GitHub Action DB error | Used `postgres.railway.internal` URL | Set secret to `DATABASE_PUBLIC_URL` |
 | Search empty, high total | Metadata synced, not probed | Run `grow` or wait for daily job |
 | Local sync stops early | Shell closed / laptop sleep | Use GitHub Actions or keep terminal open |

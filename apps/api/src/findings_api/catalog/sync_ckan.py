@@ -6,7 +6,6 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from findings_api.catalog.quality import apply_probe
@@ -18,7 +17,7 @@ from findings_api.licensing import (
     is_allowed,
     normalize_license,
 )
-from findings_api.catalog.sync_limits import build_search_text
+from findings_api.catalog.sync_limits import build_search_text, prune_stale_portal_rows
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -60,110 +59,127 @@ async def sync_ckan(session: Session, client: httpx.AsyncClient) -> int:
     rows = min(settings.ckan_sync_rows, 100)
     max_resources = settings.ckan_sync_max_packages
     seen_packages: set[str] = set()
-
-    session.execute(delete(CatalogResource).where(CatalogResource.portal == "data_gov"))
-    session.commit()
+    seen_ids: set[str] = set()
+    completed = False
+    can_prune = False
 
     search_url = f"{base}/package_search"
 
-    for query in CKAN_QUERIES:
-        if ingestible >= max_resources:
-            break
-        start = 0
-        pages = 0
-        while ingestible < max_resources and pages < settings.ckan_sync_max_pages:
-            params = {"q": query, "rows": rows, "start": start}
-            resp = await client.get(search_url, params=params, timeout=60.0)
-            resp.raise_for_status()
-            result = resp.json().get("result") or {}
-            packages = result.get("results") or []
-            if not packages:
+    try:
+        for query in CKAN_QUERIES:
+            if ingestible >= max_resources:
                 break
-
-            for pkg in packages:
-                if ingestible >= max_resources:
+            start = 0
+            pages = 0
+            while ingestible < max_resources and pages < settings.ckan_sync_max_pages:
+                params = {"q": query, "rows": rows, "start": start}
+                resp = await client.get(search_url, params=params, timeout=60.0)
+                resp.raise_for_status()
+                result = resp.json().get("result") or {}
+                packages = result.get("results") or []
+                if not packages:
                     break
-                pkg_id = pkg.get("id") or pkg.get("name")
-                if not pkg_id or pkg_id in seen_packages:
-                    continue
-                seen_packages.add(pkg_id)
 
-                show_url = f"{base}/package_show"
-                show_resp = await client.get(show_url, params={"id": pkg_id}, timeout=60.0)
-                if show_resp.status_code != 200:
-                    continue
-                full = show_resp.json().get("result", {})
-                lic_raw = _package_license(full)
-                lic_norm = normalize_license(lic_raw)
-                if not is_allowed(lic_norm, "data_gov"):
-                    continue
-
-                org = (full.get("organization") or {}).get("title") or "data.gov"
-                title = full.get("title") or pkg_id
-                desc = (full.get("notes") or "")[:4000]
-                tags = [t.get("name", "") for t in full.get("tags") or [] if t.get("name")]
-                pkg_url = f"https://catalog.data.gov/dataset/{full.get('name') or pkg_id}"
-
-                for res in full.get("resources") or []:
+                for pkg in packages:
                     if ingestible >= max_resources:
                         break
-                    fmt = res.get("format") or ""
-                    if not _allowed_formats(fmt):
+                    pkg_id = pkg.get("id") or pkg.get("name")
+                    if not pkg_id or pkg_id in seen_packages:
                         continue
-                    url = res.get("url")
-                    if not url:
+                    seen_packages.add(pkg_id)
+
+                    show_url = f"{base}/package_show"
+                    show_resp = await client.get(show_url, params={"id": pkg_id}, timeout=60.0)
+                    if show_resp.status_code != 200:
+                        continue
+                    full = show_resp.json().get("result", {})
+                    lic_raw = _package_license(full)
+                    lic_norm = normalize_license(lic_raw)
+                    if not is_allowed(lic_norm, "data_gov"):
                         continue
 
-                    res_id = res.get("id") or url
-                    rid = f"ckan:{pkg_id}:{res_id}"
-                    lic_display = {
-                        "CC0": "CC0 1.0 — public domain dedication",
-                        "US_PD": "US Public Domain",
-                        "US_GOV_WORK": "US Government Work",
-                        "PDDL": "Public Domain Dedication",
-                    }.get(lic_norm or "", lic_raw or "Open")
+                    org = (full.get("organization") or {}).get("title") or "data.gov"
+                    title = full.get("title") or pkg_id
+                    desc = (full.get("notes") or "")[:4000]
+                    tags = [t.get("name", "") for t in full.get("tags") or [] if t.get("name")]
+                    pkg_url = f"https://catalog.data.gov/dataset/{full.get('name') or pkg_id}"
 
-                    attr = default_attribution("data_gov", title, org, pkg_url)
-                    rec = CatalogResource(
-                        id=rid,
-                        portal="data_gov",
-                        title=f"{title} ({fmt})",
-                        description=desc or None,
-                        organization=org,
-                        tags=tags,
-                        format=fmt.upper()[:32],
-                        license_normalized=lic_norm or "CC0",
-                        license_raw=lic_raw,
-                        license_display=lic_display,
-                        attribution_required=attribution_required(lic_norm),
-                        attribution_text=attr,
-                        publisher=org,
-                        source_url=pkg_url,
-                        resource_url=url,
-                        columns=None,
-                        row_count_hint=None,
-                        byte_size=res.get("size"),
-                        updated_at=datetime.now(timezone.utc),
-                        search_text=build_search_text(title, desc, org, tags),
-                        ingestible=False,
-                    )
-                    if settings.catalog_probe_enabled:
-                        probe = await probe_url(url, client=client, portal="data_gov")
-                        apply_probe(rec, probe)
-                    else:
-                        rec.ingestible = True
-                        rec.detected_format = fmt.upper()[:32]
-                    session.merge(rec)
-                    count += 1
-                    if rec.ingestible:
-                        ingestible += 1
+                    for res in full.get("resources") or []:
+                        if ingestible >= max_resources:
+                            break
+                        fmt = res.get("format") or ""
+                        if not _allowed_formats(fmt):
+                            continue
+                        url = res.get("url")
+                        if not url:
+                            continue
 
-            start += rows
-            pages += 1
-            total_found = int(result.get("count") or 0)
-            if start >= total_found:
-                break
+                        res_id = res.get("id") or url
+                        rid = f"ckan:{pkg_id}:{res_id}"
+                        lic_display = {
+                            "CC0": "CC0 1.0 — public domain dedication",
+                            "US_PD": "US Public Domain",
+                            "US_GOV_WORK": "US Government Work",
+                            "PDDL": "Public Domain Dedication",
+                        }.get(lic_norm or "", lic_raw or "Open")
 
-    session.commit()
-    logger.info("CKAN sync: %s resources indexed (%s ingestible)", count, ingestible)
-    return count
+                        attr = default_attribution("data_gov", title, org, pkg_url)
+                        rec = CatalogResource(
+                            id=rid,
+                            portal="data_gov",
+                            title=f"{title} ({fmt})",
+                            description=desc or None,
+                            organization=org,
+                            tags=tags,
+                            format=fmt.upper()[:32],
+                            license_normalized=lic_norm or "CC0",
+                            license_raw=lic_raw,
+                            license_display=lic_display,
+                            attribution_required=attribution_required(lic_norm),
+                            attribution_text=attr,
+                            publisher=org,
+                            source_url=pkg_url,
+                            resource_url=url,
+                            columns=None,
+                            row_count_hint=None,
+                            byte_size=res.get("size"),
+                            updated_at=datetime.now(timezone.utc),
+                            search_text=build_search_text(title, desc, org, tags),
+                            ingestible=False,
+                        )
+                        if settings.catalog_probe_enabled:
+                            probe = await probe_url(url, client=client, portal="data_gov")
+                            apply_probe(rec, probe)
+                        else:
+                            rec.ingestible = True
+                            rec.detected_format = fmt.upper()[:32]
+                        session.merge(rec)
+                        seen_ids.add(rid)
+                        count += 1
+                        if rec.ingestible:
+                            ingestible += 1
+
+                start += rows
+                pages += 1
+                total_found = int(result.get("count") or 0)
+                if start >= total_found:
+                    break
+
+        session.commit()
+        completed = True
+        can_prune = ingestible < max_resources
+        logger.info("CKAN sync: %s resources indexed (%s ingestible)", count, ingestible)
+        return count
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "CKAN sync failed after %s indexed rows; existing catalog rows kept",
+            count,
+        )
+        raise
+    finally:
+        if completed and can_prune:
+            pruned = prune_stale_portal_rows(session, "data_gov", seen_ids, id_prefix="ckan:")
+            session.commit()
+            if pruned:
+                logger.info("CKAN prune: removed %s stale rows", pruned)

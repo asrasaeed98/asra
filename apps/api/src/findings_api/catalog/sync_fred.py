@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import httpx
-from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from findings_api.catalog.quality import apply_probe
@@ -18,7 +17,13 @@ from findings_api.licensing import (
     default_attribution,
     is_allowed,
 )
-from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, build_search_text, max_indexed, should_probe
+from findings_api.catalog.sync_limits import (
+    PENDING_PROBE_REASON,
+    build_search_text,
+    max_indexed,
+    prune_stale_portal_rows,
+    should_probe,
+)
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -97,6 +102,7 @@ async def _index_series(
     *,
     ingestible_so_far: int,
     ingestible_cap: int,
+    seen_ids: set[str],
 ) -> bool:
     """Upsert one FRED series; return True if ingestible."""
     title = meta.get("title") or series_id
@@ -149,6 +155,7 @@ async def _index_series(
 
     session.merge(rec)
     session.flush()
+    seen_ids.add(rid)
     return bool(rec.ingestible)
 
 
@@ -158,20 +165,20 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
         logger.warning("FRED sync skipped — set FRED_API_KEY in .env")
         return 0
 
-    session.execute(delete(CatalogResource).where(CatalogResource.portal == "fred"))
-    session.commit()
-
     indexed = 0
     ingestible = 0
-    seen: set[str] = set()
+    seen_series: set[str] = set()
+    seen_ids: set[str] = set()
     max_ingestible = settings.fred_sync_max_series
     max_rows = max_indexed(max_ingestible, settings.fred_sync_max_indexed)
+    completed = False
+    can_prune = False
 
     async def try_series(series_id: str, meta: dict | None = None) -> None:
         nonlocal indexed, ingestible
-        if indexed >= max_rows or series_id in seen:
+        if indexed >= max_rows or series_id in seen_series:
             return
-        seen.add(series_id)
+        seen_series.add(series_id)
         row = meta or await _fetch_series_meta(client, series_id)
         if not row or not is_allowed(LICENSE_NORM, "fred"):
             return
@@ -184,79 +191,97 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
             row,
             ingestible_so_far=ingestible,
             ingestible_cap=max_ingestible,
+            seen_ids=seen_ids,
         )
         indexed += 1
         if ok:
             ingestible += 1
 
-    for series_id in CURATED_SERIES:
-        if indexed >= max_rows:
-            break
-        await try_series(series_id)
+    try:
+        for series_id in CURATED_SERIES:
+            if indexed >= max_rows:
+                break
+            await try_series(series_id)
 
-    for query in SEARCH_QUERIES:
-        if indexed >= max_rows:
-            break
-        offset = 0
-        search_cap = 10000 if max_rows > max_ingestible else 500
-        while indexed < max_rows and offset < search_cap:
-            params = {
-                "search_text": query,
-                "api_key": settings.fred_api_key,
-                "file_type": "json",
-                "limit": 100,
-                "offset": offset,
-                "order_by": "popularity",
-                "sort_order": "desc",
-            }
-            resp = await client.get(f"{FRED_API}/series/search", params=params, timeout=60.0)
-            if resp.status_code != 200:
+        for query in SEARCH_QUERIES:
+            if indexed >= max_rows:
                 break
-            payload = resp.json()
-            series_list = payload.get("seriess") or payload.get("series") or []
-            if not series_list:
-                break
-            for item in series_list:
-                if indexed >= max_rows:
+            offset = 0
+            search_cap = 10000 if max_rows > max_ingestible else 500
+            while indexed < max_rows and offset < search_cap:
+                params = {
+                    "search_text": query,
+                    "api_key": settings.fred_api_key,
+                    "file_type": "json",
+                    "limit": 100,
+                    "offset": offset,
+                    "order_by": "popularity",
+                    "sort_order": "desc",
+                }
+                resp = await client.get(f"{FRED_API}/series/search", params=params, timeout=60.0)
+                if resp.status_code != 200:
                     break
-                series_id = item.get("id")
-                if not series_id:
-                    continue
-                await try_series(series_id, meta=item)
-            offset += len(series_list)
-            total = int(payload.get("count") or 0)
-            if offset >= total:
-                break
-
-    if indexed < max_rows:
-        offset = 0
-        while indexed < max_rows:
-            params = {
-                "api_key": settings.fred_api_key,
-                "file_type": "json",
-                "limit": 1000,
-                "offset": offset,
-            }
-            resp = await client.get(f"{FRED_API}/series", params=params, timeout=60.0)
-            if resp.status_code != 200:
-                break
-            payload = resp.json()
-            series_list = payload.get("seriess") or payload.get("series") or []
-            if not series_list:
-                break
-            for item in series_list:
-                if indexed >= max_rows:
+                payload = resp.json()
+                series_list = payload.get("seriess") or payload.get("series") or []
+                if not series_list:
                     break
-                series_id = item.get("id")
-                if not series_id:
-                    continue
-                await try_series(series_id, meta=item)
-            offset += len(series_list)
-            if len(series_list) < 1000:
-                break
-            if indexed % 100 == 0:
-                session.commit()
+                for item in series_list:
+                    if indexed >= max_rows:
+                        break
+                    series_id = item.get("id")
+                    if not series_id:
+                        continue
+                    await try_series(series_id, meta=item)
+                offset += len(series_list)
+                total = int(payload.get("count") or 0)
+                if offset >= total:
+                    break
 
-    session.commit()
-    logger.info("FRED sync: %s series indexed (%s ingestible)", indexed, ingestible)
-    return indexed
+        if indexed < max_rows:
+            offset = 0
+            while indexed < max_rows:
+                params = {
+                    "api_key": settings.fred_api_key,
+                    "file_type": "json",
+                    "limit": 1000,
+                    "offset": offset,
+                }
+                resp = await client.get(f"{FRED_API}/series", params=params, timeout=60.0)
+                if resp.status_code != 200:
+                    break
+                payload = resp.json()
+                series_list = payload.get("seriess") or payload.get("series") or []
+                if not series_list:
+                    can_prune = True
+                    break
+                for item in series_list:
+                    if indexed >= max_rows:
+                        break
+                    series_id = item.get("id")
+                    if not series_id:
+                        continue
+                    await try_series(series_id, meta=item)
+                offset += len(series_list)
+                if len(series_list) < 1000:
+                    can_prune = indexed < max_rows
+                    break
+                if indexed % 100 == 0:
+                    session.commit()
+
+        session.commit()
+        completed = True
+        logger.info("FRED sync: %s series indexed (%s ingestible)", indexed, ingestible)
+        return indexed
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "FRED sync failed after %s indexed rows; existing catalog rows kept",
+            indexed,
+        )
+        raise
+    finally:
+        if completed and can_prune:
+            pruned = prune_stale_portal_rows(session, "fred", seen_ids)
+            session.commit()
+            if pruned:
+                logger.info("FRED prune: removed %s stale rows", pruned)

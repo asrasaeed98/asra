@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
 from findings_api.config import settings
+from findings_api.models import CatalogResource
 
 PENDING_PROBE_REASON = "pending probe"
 
@@ -34,3 +38,23 @@ def max_indexed(ingestible_cap: int, indexed_cap: int) -> int:
 def should_probe(*, ingestible: int, ingestible_cap: int) -> bool:
     """Probe downloads only while under the ingestible target and probing is enabled."""
     return settings.catalog_probe_enabled and ingestible < ingestible_cap
+
+
+def prune_stale_portal_rows(
+    session: Session,
+    portal: str,
+    seen_ids: set[str],
+    *,
+    id_prefix: str | None = None,
+) -> int:
+    """Drop portal rows missing from a completed sync pass (removed upstream)."""
+    if not seen_ids:
+        return 0
+    conditions = [
+        CatalogResource.portal == portal,
+        CatalogResource.id.not_in(seen_ids),
+    ]
+    if id_prefix:
+        conditions.append(CatalogResource.id.startswith(id_prefix))
+    result = session.execute(delete(CatalogResource).where(*conditions))
+    return int(result.rowcount or 0)

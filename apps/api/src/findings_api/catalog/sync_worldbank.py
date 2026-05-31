@@ -6,7 +6,6 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from findings_api.catalog.quality import apply_probe
@@ -22,7 +21,14 @@ from findings_api.licensing import (
     default_attribution,
     is_allowed,
 )
-from findings_api.catalog.sync_limits import PENDING_PROBE_REASON, build_search_text, clamp_str, max_indexed, should_probe
+from findings_api.catalog.sync_limits import (
+    PENDING_PROBE_REASON,
+    build_search_text,
+    clamp_str,
+    max_indexed,
+    prune_stale_portal_rows,
+    should_probe,
+)
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -76,6 +82,7 @@ async def _index_indicator(
     *,
     ingestible_so_far: int,
     ingestible_cap: int,
+    seen_ids: set[str],
 ) -> bool:
     """Upsert one indicator; return True if ingestible."""
     ind_id = row.get("id")
@@ -139,6 +146,7 @@ async def _index_indicator(
 
     session.merge(rec)
     session.flush()
+    seen_ids.add(rec.id)
     return bool(rec.ingestible)
 
 
@@ -151,55 +159,25 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
     indexed = 0
     ingestible = 0
     skipped_duplicate = 0
+    seen_ids: set[str] = set()
+    completed = False
+    can_prune = False
 
-    session.execute(delete(CatalogResource).where(CatalogResource.portal == "world_bank"))
-    session.commit()
-
-    # Phase 1 — curated macro indicators (always attempt, no family cap).
-    for ind_id in CURATED_INDICATORS:
-        if indexed >= max_rows:
-            break
-        row = await _fetch_indicator_meta(client, ind_id)
-        if not row:
-            continue
-        ok = await _index_indicator(
-            session, client, row, ingestible_so_far=ingestible, ingestible_cap=max_ingestible
-        )
-        indexed += 1
-        if ok:
-            ingestible += 1
-            _record_diversity(row, family_counts=family_counts, topic_counts=topic_counts)
-        if indexed % 25 == 0:
-            session.commit()
-
-    # Phase 2 — walk catalog with per-family and per-topic caps.
-    page = 1
-    per_page = 100
-    while indexed < max_rows:
-        url = f"{WB_API}?format=json&per_page={per_page}&page={page}"
-        resp = await client.get(url, timeout=60.0)
-        resp.raise_for_status()
-        payload = resp.json()
-        if not isinstance(payload, list) or len(payload) < 2:
-            break
-        meta, rows = payload[0], payload[1]
-        if not rows:
-            break
-
-        for row in rows:
+    try:
+        # Phase 1 — curated macro indicators (always attempt, no family cap).
+        for ind_id in CURATED_INDICATORS:
             if indexed >= max_rows:
                 break
-            ind_id = row.get("id")
-            if not ind_id or ind_id in CURATED_INDICATORS:
+            row = await _fetch_indicator_meta(client, ind_id)
+            if not row:
                 continue
-            if ingestible < max_ingestible and not _diversity_allows(
-                row, family_counts=family_counts, topic_counts=topic_counts
-            ):
-                skipped_duplicate += 1
-                continue
-
             ok = await _index_indicator(
-                session, client, row, ingestible_so_far=ingestible, ingestible_cap=max_ingestible
+                session,
+                client,
+                row,
+                ingestible_so_far=ingestible,
+                ingestible_cap=max_ingestible,
+                seen_ids=seen_ids,
             )
             indexed += 1
             if ok:
@@ -208,16 +186,72 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
             if indexed % 25 == 0:
                 session.commit()
 
-        pages = int(meta.get("pages", 1))
-        if page >= pages:
-            break
-        page += 1
+        # Phase 2 — walk catalog with per-family and per-topic caps.
+        page = 1
+        per_page = 100
+        while indexed < max_rows:
+            url = f"{WB_API}?format=json&per_page={per_page}&page={page}"
+            resp = await client.get(url, timeout=60.0)
+            resp.raise_for_status()
+            payload = resp.json()
+            if not isinstance(payload, list) or len(payload) < 2:
+                break
+            meta, rows = payload[0], payload[1]
+            if not rows:
+                break
 
-    session.commit()
-    logger.info(
-        "World Bank sync: %s indexed (%s ingestible, %s skipped as near-duplicates)",
-        indexed,
-        ingestible,
-        skipped_duplicate,
-    )
-    return indexed
+            for row in rows:
+                if indexed >= max_rows:
+                    break
+                ind_id = row.get("id")
+                if not ind_id or ind_id in CURATED_INDICATORS:
+                    continue
+                if ingestible < max_ingestible and not _diversity_allows(
+                    row, family_counts=family_counts, topic_counts=topic_counts
+                ):
+                    skipped_duplicate += 1
+                    continue
+
+                ok = await _index_indicator(
+                    session,
+                    client,
+                    row,
+                    ingestible_so_far=ingestible,
+                    ingestible_cap=max_ingestible,
+                    seen_ids=seen_ids,
+                )
+                indexed += 1
+                if ok:
+                    ingestible += 1
+                    _record_diversity(row, family_counts=family_counts, topic_counts=topic_counts)
+                if indexed % 25 == 0:
+                    session.commit()
+
+            pages = int(meta.get("pages", 1))
+            if page >= pages:
+                can_prune = indexed < max_rows
+                break
+            page += 1
+
+        session.commit()
+        completed = True
+        logger.info(
+            "World Bank sync: %s indexed (%s ingestible, %s skipped as near-duplicates)",
+            indexed,
+            ingestible,
+            skipped_duplicate,
+        )
+        return indexed
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "World Bank sync failed after %s indexed rows; existing catalog rows kept",
+            indexed,
+        )
+        raise
+    finally:
+        if completed and can_prune:
+            pruned = prune_stale_portal_rows(session, "world_bank", seen_ids)
+            session.commit()
+            if pruned:
+                logger.info("World Bank prune: removed %s stale rows", pruned)
