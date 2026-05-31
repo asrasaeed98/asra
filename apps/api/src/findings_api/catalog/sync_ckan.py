@@ -17,7 +17,7 @@ from findings_api.licensing import (
     is_allowed,
     normalize_license,
 )
-from findings_api.catalog.sync_limits import build_search_text, prune_stale_portal_rows
+from findings_api.catalog.sync_limits import build_search_text, prune_stale_portal_rows, should_prune_after_sync
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -167,7 +167,11 @@ async def sync_ckan(session: Session, client: httpx.AsyncClient) -> int:
 
         session.commit()
         completed = True
-        can_prune = ingestible < max_resources
+        can_prune = should_prune_after_sync(
+            hit_row_cap=ingestible >= max_resources,
+            upstream_exhausted=False,
+            partial_selection=True,
+        )
         logger.info("CKAN sync: %s resources indexed (%s ingestible)", count, ingestible)
         return count
     except Exception:

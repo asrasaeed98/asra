@@ -7,21 +7,42 @@ import re
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, delete, select, text
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).resolve().parents[1]
 API = ROOT / "apps" / "api"
 sys.path.insert(0, str(API / "src"))
 
-from findings_api.config import settings  # noqa: E402
+from findings_api.catalog.sync_limits import SEARCH_TEXT_MAX_BYTES, clamp_str  # noqa: E402
 from findings_api.models import CatalogResource  # noqa: E402
+
+
+def clamp_search_text(value: str) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= SEARCH_TEXT_MAX_BYTES:
+        return value
+    return encoded[:SEARCH_TEXT_MAX_BYTES].decode("utf-8", errors="ignore").rstrip()
+
 
 BATCH = 500
 
 
 def redact_url(url: str) -> str:
     return re.sub(r":([^:@/]+)@", ":***@", url.split("?")[0])
+
+
+def local_database_url() -> str:
+    """Local API DB only — ignore DATABASE_URL so prod export does not override."""
+    prod = os.environ.pop("DATABASE_URL", None)
+    try:
+        from findings_api.config import Settings
+
+        return Settings().database_url
+    finally:
+        if prod is not None:
+            os.environ["DATABASE_URL"] = prod
 
 
 def prod_database_url() -> str:
@@ -41,60 +62,79 @@ def normalize(url: str) -> str:
     return url
 
 
+def row_mapping(row: CatalogResource) -> dict:
+    return {
+        "id": row.id,
+        "portal": row.portal,
+        "title": clamp_str(row.title, 512) or row.title[:512],
+        "description": row.description,
+        "organization": clamp_str(row.organization, 512),
+        "tags": row.tags,
+        "format": row.format,
+        "license_normalized": row.license_normalized,
+        "license_raw": row.license_raw,
+        "license_display": row.license_display,
+        "attribution_required": row.attribution_required,
+        "attribution_text": row.attribution_text,
+        "publisher": clamp_str(row.publisher, 512) or (row.publisher[:512] if row.publisher else None),
+        "source_url": row.source_url,
+        "resource_url": row.resource_url,
+        "columns": row.columns,
+        "row_count_hint": row.row_count_hint,
+        "byte_size": row.byte_size,
+        "ingestible": row.ingestible,
+        "ingest_block_reason": row.ingest_block_reason,
+        "detected_format": row.detected_format,
+        "probed_at": row.probed_at,
+        "updated_at": row.updated_at,
+        "search_text": clamp_search_text(row.search_text),
+        "synced_at": row.synced_at,
+    }
+
+
+def upsert_batch(prod_sess: Session, batch: list[CatalogResource]) -> None:
+    if not batch:
+        return
+    mappings = [row_mapping(r) for r in batch]
+    stmt = insert(CatalogResource).values(mappings)
+    update_cols = {
+        c.name: stmt.excluded[c.name]
+        for c in CatalogResource.__table__.columns
+        if c.name != "id"
+    }
+    prod_sess.execute(stmt.on_conflict_do_update(index_elements=["id"], set_=update_cols))
+
+
 def main() -> None:
-    local_url = settings.database_url
+    local_url = normalize(local_database_url())
     prod_url = normalize(prod_database_url())
     local_engine = create_engine(local_url)
     prod_engine = create_engine(prod_url)
 
     with Session(local_engine) as local_sess:
         rows = list(local_sess.scalars(select(CatalogResource)).all())
+    by_id = {row.id: row for row in rows}
+    rows = list(by_id.values())
     local_count = len(rows)
     print(f"local_db={redact_url(local_url)} local_rows={local_count}")
 
-    with Session(prod_engine) as prod_sess:
-        deleted = prod_sess.execute(delete(CatalogResource)).rowcount
-        prod_sess.commit()
-        print(f"prod_db={redact_url(prod_url)} cleared_rows={deleted or 0}")
+    with prod_engine.begin() as conn:
+        conn.execute(text("DELETE FROM catalog_resources"))
+    with prod_engine.connect() as conn:
+        remaining = conn.execute(text("SELECT COUNT(*) FROM catalog_resources")).scalar()
+    if remaining:
+        raise SystemExit(f"prod catalog not empty after delete ({remaining} rows)")
+    print(f"prod_db={redact_url(prod_url)} cleared catalog_resources")
 
-        for i in range(0, local_count, BATCH):
-            batch = rows[i : i + BATCH]
-            for row in batch:
-                prod_sess.merge(
-                    CatalogResource(
-                        id=row.id,
-                        portal=row.portal,
-                        title=row.title,
-                        description=row.description,
-                        organization=row.organization,
-                        tags=row.tags,
-                        format=row.format,
-                        license_normalized=row.license_normalized,
-                        license_raw=row.license_raw,
-                        license_display=row.license_display,
-                        attribution_required=row.attribution_required,
-                        attribution_text=row.attribution_text,
-                        publisher=row.publisher,
-                        source_url=row.source_url,
-                        resource_url=row.resource_url,
-                        columns=row.columns,
-                        row_count_hint=row.row_count_hint,
-                        byte_size=row.byte_size,
-                        ingestible=row.ingestible,
-                        ingest_block_reason=row.ingest_block_reason,
-                        detected_format=row.detected_format,
-                        probed_at=row.probed_at,
-                        updated_at=row.updated_at,
-                        search_text=row.search_text,
-                        synced_at=row.synced_at,
-                    )
-                )
+    for i in range(0, local_count, BATCH):
+        batch = rows[i : i + BATCH]
+        with Session(prod_engine) as prod_sess:
+            upsert_batch(prod_sess, batch)
             prod_sess.commit()
-            print(f"copied {min(i + BATCH, local_count)}/{local_count}")
+        print(f"copied {min(i + BATCH, local_count)}/{local_count}")
 
-        prod_count = prod_sess.execute(
-            text("SELECT COUNT(*) FROM catalog_resources")
-        ).scalar()
+    with Session(prod_engine) as prod_sess:
+        prod_count = prod_sess.execute(text("SELECT COUNT(*) FROM catalog_resources")).scalar()
     print(f"prod_rows={prod_count}")
     if prod_count != local_count:
         raise SystemExit(f"row mismatch: local={local_count} prod={prod_count}")

@@ -27,6 +27,7 @@ from findings_api.catalog.sync_limits import (
     clamp_str,
     max_indexed,
     prune_stale_portal_rows,
+    should_prune_after_sync,
     should_probe,
 )
 from findings_api.models import CatalogResource
@@ -162,11 +163,14 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
     seen_ids: set[str] = set()
     completed = False
     can_prune = False
+    hit_row_cap = False
+    upstream_exhausted = False
 
     try:
         # Phase 1 — curated macro indicators (always attempt, no family cap).
         for ind_id in CURATED_INDICATORS:
             if indexed >= max_rows:
+                hit_row_cap = True
                 break
             row = await _fetch_indicator_meta(client, ind_id)
             if not row:
@@ -202,6 +206,7 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
 
             for row in rows:
                 if indexed >= max_rows:
+                    hit_row_cap = True
                     break
                 ind_id = row.get("id")
                 if not ind_id or ind_id in CURATED_INDICATORS:
@@ -229,12 +234,17 @@ async def sync_worldbank(session: Session, client: httpx.AsyncClient) -> int:
 
             pages = int(meta.get("pages", 1))
             if page >= pages:
-                can_prune = indexed < max_rows
+                upstream_exhausted = True
                 break
             page += 1
 
         session.commit()
         completed = True
+        can_prune = should_prune_after_sync(
+            hit_row_cap=hit_row_cap,
+            upstream_exhausted=upstream_exhausted,
+            partial_selection=skipped_duplicate > 0,
+        )
         logger.info(
             "World Bank sync: %s indexed (%s ingestible, %s skipped as near-duplicates)",
             indexed,

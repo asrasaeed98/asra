@@ -40,6 +40,18 @@ def should_probe(*, ingestible: int, ingestible_cap: int) -> bool:
     return settings.catalog_probe_enabled and ingestible < ingestible_cap
 
 
+def should_prune_after_sync(
+    *,
+    hit_row_cap: bool,
+    upstream_exhausted: bool,
+    partial_selection: bool = False,
+) -> bool:
+    """Prune only on opt-in full upstream passes (never on capped/partial syncs)."""
+    if not settings.catalog_sync_prune_enabled:
+        return False
+    return upstream_exhausted and not hit_row_cap and not partial_selection
+
+
 def prune_stale_portal_rows(
     session: Session,
     portal: str,

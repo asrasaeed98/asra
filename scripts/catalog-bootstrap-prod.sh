@@ -13,12 +13,7 @@ if [[ ! -x "$PY" ]]; then
   exit 1
 fi
 
-if [[ -f "$ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/.env"
-  set +a
-fi
+# Do not source root .env — DATABASE_URL there may point at prod.
 
 DB_PUBLIC="$(npx railway variable list --service Postgres -k 2>/dev/null | grep '^DATABASE_PUBLIC_URL=' | cut -d= -f2- || true)"
 if [[ -z "$DB_PUBLIC" ]]; then

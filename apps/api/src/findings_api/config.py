@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     fred_sync_max_indexed: int = 0
     catalog_sync_interval_hours: float = 0
     catalog_sync_run_on_startup: bool = False
+    catalog_sync_prune_enabled: bool = False
     catalog_probe_interval_hours: float = 0
     catalog_probe_batch_size: int = 500
     admin_sync_token: str = ""

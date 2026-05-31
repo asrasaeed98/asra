@@ -21,8 +21,9 @@ from findings_api.licensing import (
 from findings_api.catalog.sync_limits import (
     PENDING_PROBE_REASON,
     build_search_text,
-    prune_stale_portal_rows,
     max_indexed,
+    prune_stale_portal_rows,
+    should_prune_after_sync,
     should_probe,
 )
 from findings_api.models import CatalogResource
@@ -101,6 +102,8 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
     seen_ids: set[str] = set()
     completed = False
     can_prune = False
+    hit_row_cap = False
+    upstream_exhausted = True
 
     try:
         query_list: tuple[dict[str, str], ...] = SEARCH_QUERIES
@@ -109,6 +112,7 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
 
         for query_params in query_list:
             if indexed >= max_rows:
+                hit_row_cap = True
                 break
             after: str | None = None
             pages = 0
@@ -128,6 +132,7 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
 
                 for item in results:
                     if indexed >= max_rows:
+                        hit_row_cap = True
                         break
                     dcat = item.get("dcat") or {}
                     access = (dcat.get("accessLevel") or item.get("accessLevel") or "").lower()
@@ -223,10 +228,15 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                 pages += 1
                 if not after:
                     break
+            if after and pages >= max_pages:
+                upstream_exhausted = False
 
         session.commit()
         completed = True
-        can_prune = indexed < max_rows
+        can_prune = should_prune_after_sync(
+            hit_row_cap=hit_row_cap,
+            upstream_exhausted=upstream_exhausted,
+        )
         logger.info("data.gov Catalog API sync: %s indexed (%s ingestible)", indexed, ingestible)
         return indexed
     except Exception:

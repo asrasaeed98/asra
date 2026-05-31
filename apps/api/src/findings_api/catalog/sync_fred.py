@@ -22,6 +22,7 @@ from findings_api.catalog.sync_limits import (
     build_search_text,
     max_indexed,
     prune_stale_portal_rows,
+    should_prune_after_sync,
     should_probe,
 )
 from findings_api.models import CatalogResource
@@ -173,10 +174,15 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
     max_rows = max_indexed(max_ingestible, settings.fred_sync_max_indexed)
     completed = False
     can_prune = False
+    hit_row_cap = False
+    upstream_exhausted = False
 
     async def try_series(series_id: str, meta: dict | None = None) -> None:
-        nonlocal indexed, ingestible
-        if indexed >= max_rows or series_id in seen_series:
+        nonlocal indexed, ingestible, hit_row_cap
+        if indexed >= max_rows:
+            hit_row_cap = True
+            return
+        if series_id in seen_series:
             return
         seen_series.add(series_id)
         row = meta or await _fetch_series_meta(client, series_id)
@@ -200,11 +206,13 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
     try:
         for series_id in CURATED_SERIES:
             if indexed >= max_rows:
+                hit_row_cap = True
                 break
             await try_series(series_id)
 
         for query in SEARCH_QUERIES:
             if indexed >= max_rows:
+                hit_row_cap = True
                 break
             offset = 0
             search_cap = 10000 if max_rows > max_ingestible else 500
@@ -227,6 +235,7 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
                     break
                 for item in series_list:
                     if indexed >= max_rows:
+                        hit_row_cap = True
                         break
                     series_id = item.get("id")
                     if not series_id:
@@ -252,10 +261,11 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
                 payload = resp.json()
                 series_list = payload.get("seriess") or payload.get("series") or []
                 if not series_list:
-                    can_prune = True
+                    upstream_exhausted = True
                     break
                 for item in series_list:
                     if indexed >= max_rows:
+                        hit_row_cap = True
                         break
                     series_id = item.get("id")
                     if not series_id:
@@ -263,13 +273,18 @@ async def sync_fred(session: Session, client: httpx.AsyncClient) -> int:
                     await try_series(series_id, meta=item)
                 offset += len(series_list)
                 if len(series_list) < 1000:
-                    can_prune = indexed < max_rows
+                    upstream_exhausted = not hit_row_cap
                     break
                 if indexed % 100 == 0:
                     session.commit()
 
         session.commit()
         completed = True
+        can_prune = should_prune_after_sync(
+            hit_row_cap=hit_row_cap,
+            upstream_exhausted=upstream_exhausted,
+            partial_selection=max_rows > max_ingestible,
+        )
         logger.info("FRED sync: %s series indexed (%s ingestible)", indexed, ingestible)
         return indexed
     except Exception:

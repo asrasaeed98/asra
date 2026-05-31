@@ -13,6 +13,7 @@ from findings_api.catalog.sync_limits import (
     clamp_str,
     max_indexed,
     prune_stale_portal_rows,
+    should_prune_after_sync,
     should_probe,
 )
 from findings_api.config import settings
@@ -54,7 +55,31 @@ def test_build_search_text_caps_index_size():
     assert len(text.encode("utf-8")) <= 2500
 
 
-def test_clamp_str_truncates():
+def test_should_prune_after_sync_defaults_off():
+    assert should_prune_after_sync(
+        hit_row_cap=False,
+        upstream_exhausted=True,
+        partial_selection=False,
+    ) is False
+
+
+def test_should_prune_after_sync_respects_flags(monkeypatch):
+    monkeypatch.setattr(settings, "catalog_sync_prune_enabled", True)
+    assert should_prune_after_sync(
+        hit_row_cap=False,
+        upstream_exhausted=True,
+        partial_selection=False,
+    ) is True
+    assert should_prune_after_sync(
+        hit_row_cap=True,
+        upstream_exhausted=True,
+        partial_selection=False,
+    ) is False
+    assert should_prune_after_sync(
+        hit_row_cap=False,
+        upstream_exhausted=False,
+        partial_selection=False,
+    ) is False
     assert clamp_str("x" * 600, 512) == "x" * 512
     assert clamp_str("short", 512) == "short"
 
