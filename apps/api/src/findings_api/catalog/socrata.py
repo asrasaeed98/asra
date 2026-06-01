@@ -11,6 +11,8 @@ from findings_api.config import settings
 PORTAL_NYC = "nyc_open_data"
 LICENSE_NORM = "US_GOV_WORK"
 SOQL_QUERY_PARAM = "socrata_soql"
+# Matches CatalogResource.resource_url VARCHAR(1024).
+CATALOG_RESOURCE_URL_MAX_LEN = 1024
 
 # Socrata column types we treat as flat scalars in SoQL SELECT lists.
 SCALAR_DATA_TYPES = frozenset({
@@ -88,8 +90,8 @@ def default_soql(*, limit: int | None = None) -> str:
     return f"SELECT * LIMIT {cap}"
 
 
-def build_scalar_soql(columns: list[dict], *, limit: int | None = None) -> str | None:
-    """Build a flat SoQL query excluding geo / nested Socrata column types."""
+def scalar_field_names(columns: list[dict], *, max_names: int | None = None) -> list[str]:
+    """Flat scalar column names suitable for SoQL SELECT lists."""
     names: list[str] = []
     for col in columns:
         field = col.get("fieldName") or col.get("name")
@@ -100,11 +102,47 @@ def build_scalar_soql(columns: list[dict], *, limit: int | None = None) -> str |
             continue
         if dtype in SCALAR_DATA_TYPES or dtype.startswith("text"):
             names.append(field)
+            if max_names is not None and len(names) >= max_names:
+                break
+    return names
+
+
+def build_scalar_soql(columns: list[dict], *, limit: int | None = None) -> str | None:
+    """Build a flat SoQL query excluding geo / nested Socrata column types."""
+    names = scalar_field_names(columns, max_names=40)
     if len(names) < 2:
         return None
     cap = limit if limit is not None else analysis_row_cap()
-    select = ", ".join(names[:40])
-    return f"SELECT {select} LIMIT {cap}"
+    return f"SELECT {', '.join(names)} LIMIT {cap}"
+
+
+def build_catalog_resource_url(
+    base: str,
+    dataset_id: str,
+    columns: list[dict],
+    *,
+    max_len: int = CATALOG_RESOURCE_URL_MAX_LEN,
+) -> tuple[str, str] | None:
+    """Return (resource_url, soql) that fits the catalog URL column; fall back to SELECT *."""
+    names = scalar_field_names(columns)
+    if len(names) < 2:
+        return None
+
+    cap = analysis_row_cap()
+    soql_candidates: list[str] = []
+    for count in range(min(40, len(names)), 1, -1):
+        soql_candidates.append(f"SELECT {', '.join(names[:count])} LIMIT {cap}")
+    soql_candidates.append(default_soql(limit=cap))
+
+    seen: set[str] = set()
+    for soql in soql_candidates:
+        if soql in seen:
+            continue
+        seen.add(soql)
+        url = query_url(base, dataset_id, soql)
+        if len(url) <= max_len:
+            return url, soql
+    return None
 
 
 def source_page_url(base: str, dataset_id: str) -> str:

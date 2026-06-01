@@ -13,9 +13,9 @@ from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.socrata import (
     LICENSE_NORM,
     PORTAL_NYC,
+    build_catalog_resource_url,
     build_scalar_soql,
     fetch_socrata_row_count,
-    query_url,
     source_page_url,
 )
 from findings_api.catalog.sync_limits import (
@@ -267,9 +267,10 @@ async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int
             continue
 
         columns_meta = meta.get("columns") or []
-        soql = build_scalar_soql(columns_meta)
-        if not soql:
+        catalog_url = build_catalog_resource_url(base, dataset_id, columns_meta)
+        if not catalog_url:
             continue
+        resource_url, _soql = catalog_url
 
         title = clamp_str(meta.get("name") or meta.get("title") or dataset_id, 512) or dataset_id
         desc = clamp_str((meta.get("description") or "")[:4000], 4000)
@@ -278,7 +279,6 @@ async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int
         tags = [meta.get("category")] if meta.get("category") else []
         tags = [t for t in tags if t]
 
-        resource_url = query_url(base, dataset_id, soql)
         page_url = source_page_url(base, dataset_id)
         row_count_hint = await fetch_socrata_row_count(client, base, dataset_id)
         if row_count_hint == 0:

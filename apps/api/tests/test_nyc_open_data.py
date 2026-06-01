@@ -5,7 +5,9 @@ import pytest
 from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.probe import ProbeResult
 from findings_api.catalog.socrata import (
+    CATALOG_RESOURCE_URL_MAX_LEN,
     analysis_row_cap,
+    build_catalog_resource_url,
     build_scalar_soql,
     parse_query_url,
     query_url,
@@ -32,6 +34,17 @@ def test_build_scalar_soql_excludes_geo():
     ]
     soql = build_scalar_soql(columns, limit=100)
     assert soql == "SELECT boro_nm, count LIMIT 100"
+
+
+def test_build_catalog_resource_url_fits_varchar():
+    columns = [
+        {"fieldName": f"very_long_column_name_{i}", "dataTypeName": "text"}
+        for i in range(40)
+    ]
+    url, soql = build_catalog_resource_url("https://data.cityofnewyork.us", "mg8s-7r2b", columns)
+    assert len(url) <= CATALOG_RESOURCE_URL_MAX_LEN
+    assert soql.startswith("SELECT ")
+    assert "LIMIT" in soql
 
 
 def test_query_url_roundtrip():
