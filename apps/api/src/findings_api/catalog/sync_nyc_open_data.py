@@ -63,54 +63,183 @@ METADATA_SEARCH_QUERIES = (
     "covid",
 )
 
+# NYC metadata search honors plain `limit` but ignores `offset` — one page per query.
 DISCOVERY_PAGE_SIZE = 50
+# Inspect extra candidates because many fail tabular / SoQL filters.
+DISCOVERY_POOL_MULTIPLIER = 3
+DISCOVERY_POOL_MAX = 500
 
-SKIP_VIEW_TYPES = frozenset({"blob", "file", "filter", "href", "chart", "map"})
+SKIP_VIEW_TYPES = frozenset({"blob", "file", "filter", "href", "chart", "map", "story"})
+_EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _parse_iso_ts(value: str | None) -> datetime | None:
+    if not value or not isinstance(value, str):
+        return None
+    normalized = value.replace("Z", "+00:00")
+    if normalized.endswith("+0000"):
+        normalized = f"{normalized[:-5]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _epoch_ts(value: int | float | str | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    if n > 1e12:
+        n /= 1000.0
+    try:
+        return datetime.fromtimestamp(n, tz=timezone.utc)
+    except (OSError, ValueError, OverflowError):
+        return None
+
+
+def _search_item_recency(item: dict) -> datetime:
+    for key in ("dataUpdatedAt", "updatedAt", "metadataUpdatedAt", "createdAt"):
+        if ts := _parse_iso_ts(item.get(key)):
+            return ts
+    return _EPOCH_MIN
+
+
+def _view_recency(meta: dict) -> datetime:
+    if ts := _epoch_ts(meta.get("rowsUpdatedAt")):
+        return ts
+    for key in ("viewLastModified", "updatedAt", "createdAt"):
+        raw = meta.get(key)
+        if ts := _parse_iso_ts(raw if isinstance(raw, str) else None):
+            return ts
+        if ts := _epoch_ts(raw):
+            return ts
+    return _EPOCH_MIN
+
+
+def _is_catalog_visible(*, search_item: dict | None = None, meta: dict | None = None) -> bool:
+    for source in (search_item, meta):
+        if not source:
+            continue
+        if source.get("hideFromCatalog") or source.get("hideFromDataJson"):
+            return False
+    return True
+
+
+def _is_meaningful_view(meta: dict) -> bool:
+    if not _is_catalog_visible(meta=meta):
+        return False
+    view_type = (meta.get("viewType") or "tabular").lower()
+    if view_type in SKIP_VIEW_TYPES:
+        return False
+    title = meta.get("name") or meta.get("title")
+    if not title or not str(title).strip():
+        return False
+    columns_meta = meta.get("columns") or []
+    if not build_scalar_soql(columns_meta):
+        return False
+    return True
 
 
 async def _fetch_view_meta(client: httpx.AsyncClient, base: str, dataset_id: str) -> dict | None:
     resp = await client.get(f"{base.rstrip('/')}/api/views/{dataset_id}.json", timeout=60.0)
     if resp.status_code != 200:
         return None
-    return resp.json()
+    payload = resp.json()
+    return payload if isinstance(payload, dict) else None
 
 
-async def _discover_ids(client: httpx.AsyncClient, base: str, *, limit: int) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
+async def _fetch_search_batch(
+    client: httpx.AsyncClient,
+    base: str,
+    query: str,
+    *,
+    limit: int,
+) -> list[dict]:
+    resp = await client.get(
+        f"{base.rstrip('/')}/api/views/metadata/v1",
+        params={"q": query, "limit": limit},
+        timeout=60.0,
+    )
+    if resp.status_code != 200:
+        logger.warning("NYC metadata search failed for %r: HTTP %s", query, resp.status_code)
+        return []
+    batch = resp.json()
+    if not isinstance(batch, list):
+        return []
+    return [item for item in batch if isinstance(item, dict)]
 
-    def add(ds_id: str | None) -> bool:
-        if not ds_id or ds_id in seen:
-            return False
-        seen.add(ds_id)
-        ordered.append(ds_id)
-        return len(ordered) >= limit
+
+async def _discover_candidate_ids(client: httpx.AsyncClient, base: str, *, limit: int) -> list[str]:
+    """Collect unique dataset ids from curated seeds and topic searches, newest first."""
+    pool_cap = min(max(limit * DISCOVERY_POOL_MULTIPLIER, limit + len(CURATED_DATASET_IDS)), DISCOVERY_POOL_MAX)
+    by_id: dict[str, datetime] = {}
+
+    def note(ds_id: str | None, recency: datetime) -> None:
+        if not ds_id:
+            return
+        prev = by_id.get(ds_id)
+        if prev is None or recency > prev:
+            by_id[ds_id] = recency
 
     for dataset_id in CURATED_DATASET_IDS:
-        if add(dataset_id):
-            return ordered
+        note(dataset_id, _EPOCH_MIN)
 
-    for q in METADATA_SEARCH_QUERIES:
-        offset = 0
-        while len(ordered) < limit:
-            page_size = min(DISCOVERY_PAGE_SIZE, limit - len(ordered))
-            resp = await client.get(
-                f"{base.rstrip('/')}/api/views/metadata/v1",
-                params={"q": q, "limit": page_size, "offset": offset},
-                timeout=60.0,
-            )
-            if resp.status_code != 200:
-                break
-            batch = resp.json()
-            if not isinstance(batch, list) or not batch:
-                break
-            for item in batch:
-                if add(item.get("id")):
-                    return ordered
-            if len(batch) < page_size:
-                break
-            offset += len(batch)
-    return ordered
+    for query in METADATA_SEARCH_QUERIES:
+        batch = await _fetch_search_batch(
+            client,
+            base,
+            query,
+            limit=DISCOVERY_PAGE_SIZE,
+        )
+        for item in batch:
+            if not _is_catalog_visible(search_item=item):
+                continue
+            note(item.get("id"), _search_item_recency(item))
+
+    ranked = sorted(by_id.items(), key=lambda pair: pair[1], reverse=True)
+    selected = [ds_id for ds_id, _ in ranked[:pool_cap]]
+    logger.info(
+        "NYC discovery: %s unique candidates (%s selected for inspection, target index %s)",
+        len(by_id),
+        len(selected),
+        limit,
+    )
+    return selected
+
+
+async def _select_indexable_datasets(
+    client: httpx.AsyncClient,
+    base: str,
+    candidate_ids: list[str],
+    *,
+    limit: int,
+) -> list[tuple[str, dict, datetime]]:
+    """Fetch full metadata, keep meaningful tabular datasets, return newest first."""
+    indexable: list[tuple[str, dict, datetime]] = []
+
+    for dataset_id in candidate_ids:
+        meta = await _fetch_view_meta(client, base, dataset_id)
+        if not meta or not _is_meaningful_view(meta):
+            continue
+        recency = _view_recency(meta)
+        indexable.append((dataset_id, meta, recency))
+
+    indexable.sort(key=lambda row: row[2], reverse=True)
+    selected = indexable[:limit]
+    logger.info(
+        "NYC discovery: %s meaningful tabular datasets (indexing %s newest)",
+        len(indexable),
+        len(selected),
+    )
+    return selected
 
 
 async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int:
@@ -122,19 +251,24 @@ async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int
         logger.warning("NYC Open Data license %s not allowed for portal %s", LICENSE_NORM, PORTAL_NYC)
         return 0
 
+    candidate_ids = await _discover_candidate_ids(client, base, limit=max_rows)
+    datasets = await _select_indexable_datasets(client, base, candidate_ids, limit=max_rows)
+
     indexed = 0
     ingestible = 0
     seen_ids: set[str] = set()
-    dataset_ids = await _discover_ids(client, base, limit=max_rows)
 
-    for dataset_id in dataset_ids:
+    for dataset_id, meta, dataset_updated_at in datasets:
         if indexed >= max_rows:
             break
-        meta = await _fetch_view_meta(client, base, dataset_id)
-        if not meta:
+
+        rid = f"nyc:{dataset_id}"
+        if rid in seen_ids:
             continue
-        view_type = (meta.get("viewType") or "tabular").lower()
-        if view_type in SKIP_VIEW_TYPES:
+
+        columns_meta = meta.get("columns") or []
+        soql = build_scalar_soql(columns_meta)
+        if not soql:
             continue
 
         title = clamp_str(meta.get("name") or meta.get("title") or dataset_id, 512) or dataset_id
@@ -144,17 +278,12 @@ async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int
         tags = [meta.get("category")] if meta.get("category") else []
         tags = [t for t in tags if t]
 
-        columns_meta = meta.get("columns") or []
-        soql = build_scalar_soql(columns_meta)
-        if not soql:
-            logger.debug("Skipping %s — no scalar columns for SoQL", dataset_id)
-            continue
-
         resource_url = query_url(base, dataset_id, soql)
         page_url = source_page_url(base, dataset_id)
-        rid = f"nyc:{dataset_id}"
-
         row_count_hint = await fetch_socrata_row_count(client, base, dataset_id)
+        if row_count_hint == 0:
+            logger.debug("Skipping %s — empty dataset", dataset_id)
+            continue
 
         rec = CatalogResource(
             id=rid,
@@ -175,7 +304,7 @@ async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int
             columns=[{"name": c.get("fieldName") or c.get("name")} for c in columns_meta[:50]],
             row_count_hint=row_count_hint,
             byte_size=None,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=dataset_updated_at if dataset_updated_at > _EPOCH_MIN else datetime.now(timezone.utc),
             search_text=build_search_text(title, desc or "", org, tags + [dataset_id, "nyc", "new york"]),
             ingestible=False,
         )
