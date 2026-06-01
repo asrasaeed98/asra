@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from urllib.parse import urlparse
+
 import httpx
 
 from findings_api.config import settings
@@ -13,6 +15,7 @@ LICENSE_NORM = "US_GOV_WORK"
 SOQL_QUERY_PARAM = "socrata_soql"
 # Matches CatalogResource.resource_url VARCHAR(1024).
 CATALOG_RESOURCE_URL_MAX_LEN = 1024
+SOCRATA_CATALOG_API = "https://api.us.socrata.com/api/catalog/v1"
 
 # Socrata column types we treat as flat scalars in SoQL SELECT lists.
 SCALAR_DATA_TYPES = frozenset({
@@ -143,6 +146,11 @@ def build_catalog_resource_url(
         if len(url) <= max_len:
             return url, soql
     return None
+
+
+def socrata_domain(base: str) -> str:
+    """Return the Socrata domain host for a portal base URL."""
+    return urlparse(base.rstrip("/")).netloc
 
 
 def source_page_url(base: str, dataset_id: str) -> str:

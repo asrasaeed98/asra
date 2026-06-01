@@ -36,6 +36,27 @@ def test_build_scalar_soql_excludes_geo():
     assert soql == "SELECT boro_nm, count LIMIT 100"
 
 
+def test_catalog_item_recency():
+    from findings_api.catalog.sync_nyc_open_data import _catalog_item_recency
+
+    item = {
+        "resource": {
+            "id": "abc1-2345",
+            "data_updated_at": "2026-01-15T12:00:00.000Z",
+            "updatedAt": "2025-01-01T00:00:00.000Z",
+        }
+    }
+    ts = _catalog_item_recency(item)
+    assert ts.year == 2026
+    assert ts.month == 1
+
+
+def test_socrata_domain():
+    from findings_api.catalog.socrata import socrata_domain
+
+    assert socrata_domain("https://data.cityofnewyork.us") == "data.cityofnewyork.us"
+
+
 def test_build_catalog_resource_url_fits_varchar():
     columns = [
         {"fieldName": f"very_long_column_name_{i}", "dataTypeName": "text"}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 import httpx
@@ -13,9 +14,11 @@ from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.socrata import (
     LICENSE_NORM,
     PORTAL_NYC,
+    SOCRATA_CATALOG_API,
     build_catalog_resource_url,
     build_scalar_soql,
     fetch_socrata_row_count,
+    socrata_domain,
     source_page_url,
 )
 from findings_api.catalog.sync_limits import (
@@ -61,13 +64,48 @@ METADATA_SEARCH_QUERIES = (
     "demographics",
     "salary",
     "covid",
+    "police",
+    "fire",
+    "permits",
+    "inspection",
+    "complaint",
+    "payroll",
+    "election",
+    "water",
+    "energy",
+    "safety",
+    "homeless",
+    "rent",
+    "taxi",
+    "bicycle",
+    "tree",
+    "air quality",
+    "waste",
+    "flood",
+    "noise",
+    "rat",
+    "shelter",
+    "eviction",
+    "hospital",
+    "overdose",
+    "lead",
+    "contract",
+    "procurement",
+    "finance",
+    "tax",
+    "property",
+    "zoning",
+    "license",
 )
 
 # NYC metadata search honors plain `limit` but ignores `offset` — one page per query.
-DISCOVERY_PAGE_SIZE = 50
+DISCOVERY_PAGE_SIZE = 150
+# Socrata discovery catalog supports scroll_id pagination (up to 1000/page).
+CATALOG_PAGE_SIZE = 1000
+CATALOG_MAX_PAGES = 3
 # Inspect extra candidates because many fail tabular / SoQL filters.
-DISCOVERY_POOL_MULTIPLIER = 3
-DISCOVERY_POOL_MAX = 500
+DISCOVERY_POOL_MULTIPLIER = 4
+DISCOVERY_POOL_MAX = 1000
 
 SKIP_VIEW_TYPES = frozenset({"blob", "file", "filter", "href", "chart", "map", "story"})
 _EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
@@ -108,6 +146,14 @@ def _epoch_ts(value: int | float | str | None) -> datetime | None:
 def _search_item_recency(item: dict) -> datetime:
     for key in ("dataUpdatedAt", "updatedAt", "metadataUpdatedAt", "createdAt"):
         if ts := _parse_iso_ts(item.get(key)):
+            return ts
+    return _EPOCH_MIN
+
+
+def _catalog_item_recency(item: dict) -> datetime:
+    resource = item.get("resource") if isinstance(item.get("resource"), dict) else {}
+    for key in ("data_updated_at", "updatedAt", "metadata_updated_at", "createdAt"):
+        if ts := _parse_iso_ts(resource.get(key)):
             return ts
     return _EPOCH_MIN
 
@@ -154,6 +200,72 @@ async def _fetch_view_meta(client: httpx.AsyncClient, base: str, dataset_id: str
         return None
     payload = resp.json()
     return payload if isinstance(payload, dict) else None
+
+
+async def _fetch_catalog_page(
+    client: httpx.AsyncClient,
+    domain: str,
+    *,
+    scroll_id: str,
+    limit: int,
+) -> list[dict]:
+    resp = await client.get(
+        SOCRATA_CATALOG_API,
+        params={
+            "domains": domain,
+            "only": "datasets",
+            "limit": limit,
+            "scroll_id": scroll_id,
+        },
+        timeout=120.0,
+    )
+    if resp.status_code != 200:
+        logger.warning("Socrata catalog page failed for %s: HTTP %s", domain, resp.status_code)
+        return []
+    payload = resp.json()
+    if not isinstance(payload, dict):
+        return []
+    batch = payload.get("results")
+    if not isinstance(batch, list):
+        return []
+    return [item for item in batch if isinstance(item, dict)]
+
+
+async def _discover_from_catalog(
+    client: httpx.AsyncClient,
+    domain: str,
+    note: Callable[[str | None, datetime], None],
+    *,
+    pool_cap: int,
+) -> int:
+    """Scroll the Socrata discovery catalog; return number of pages fetched."""
+    scroll_id = "0"
+    pages = 0
+    while pages < CATALOG_MAX_PAGES:
+        batch = await _fetch_catalog_page(
+            client,
+            domain,
+            scroll_id=scroll_id,
+            limit=CATALOG_PAGE_SIZE,
+        )
+        if not batch:
+            break
+        last_id: str | None = None
+        for item in batch:
+            resource = item.get("resource") if isinstance(item.get("resource"), dict) else {}
+            ds_id = resource.get("id")
+            if not ds_id:
+                continue
+            note(ds_id, _catalog_item_recency(item))
+            last_id = ds_id
+        pages += 1
+        if len(batch) < CATALOG_PAGE_SIZE or not last_id:
+            break
+        scroll_id = last_id
+        if pages >= CATALOG_MAX_PAGES:
+            break
+    logger.info("NYC catalog discovery: fetched %s catalog page(s) (pool cap %s)", pages, pool_cap)
+    return pages
 
 
 async def _fetch_search_batch(
