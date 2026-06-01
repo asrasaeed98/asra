@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -106,6 +107,8 @@ CATALOG_MAX_PAGES = 3
 # Inspect extra candidates because many fail tabular / SoQL filters.
 DISCOVERY_POOL_MULTIPLIER = 4
 DISCOVERY_POOL_MAX = 1000
+_META_FETCH_CONCURRENCY = 8
+_META_FETCH_RETRIES = 3
 
 SKIP_VIEW_TYPES = frozenset({"blob", "file", "filter", "href", "chart", "map", "story"})
 _EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
@@ -195,11 +198,21 @@ def _is_meaningful_view(meta: dict) -> bool:
 
 
 async def _fetch_view_meta(client: httpx.AsyncClient, base: str, dataset_id: str) -> dict | None:
-    resp = await client.get(f"{base.rstrip('/')}/api/views/{dataset_id}.json", timeout=60.0)
-    if resp.status_code != 200:
-        return None
-    payload = resp.json()
-    return payload if isinstance(payload, dict) else None
+    url = f"{base.rstrip('/')}/api/views/{dataset_id}.json"
+    for attempt in range(_META_FETCH_RETRIES):
+        try:
+            resp = await client.get(url, timeout=60.0)
+        except httpx.HTTPError as exc:
+            if attempt + 1 >= _META_FETCH_RETRIES:
+                logger.debug("NYC view meta failed for %s: %s", dataset_id, exc)
+                return None
+            await asyncio.sleep(0.5 * (attempt + 1))
+            continue
+        if resp.status_code != 200:
+            return None
+        payload = resp.json()
+        return payload if isinstance(payload, dict) else None
+    return None
 
 
 async def _fetch_catalog_page(
@@ -348,15 +361,17 @@ async def _select_indexable_datasets(
     limit: int,
 ) -> list[tuple[str, dict, datetime]]:
     """Fetch full metadata, keep meaningful tabular datasets, return newest first."""
-    indexable: list[tuple[str, dict, datetime]] = []
+    sem = asyncio.Semaphore(_META_FETCH_CONCURRENCY)
 
-    for dataset_id in candidate_ids:
-        meta = await _fetch_view_meta(client, base, dataset_id)
+    async def inspect(dataset_id: str) -> tuple[str, dict, datetime] | None:
+        async with sem:
+            meta = await _fetch_view_meta(client, base, dataset_id)
         if not meta or not _is_meaningful_view(meta):
-            continue
-        recency = _view_recency(meta)
-        indexable.append((dataset_id, meta, recency))
+            return None
+        return dataset_id, meta, _view_recency(meta)
 
+    results = await asyncio.gather(*(inspect(dataset_id) for dataset_id in candidate_ids))
+    indexable = [row for row in results if row is not None]
     indexable.sort(key=lambda row: row[2], reverse=True)
     selected = indexable[:limit]
     logger.info(
