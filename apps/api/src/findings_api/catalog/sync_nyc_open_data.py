@@ -209,16 +209,20 @@ async def _fetch_catalog_page(
     scroll_id: str,
     limit: int,
 ) -> list[dict]:
-    resp = await client.get(
-        SOCRATA_CATALOG_API,
-        params={
-            "domains": domain,
-            "only": "datasets",
-            "limit": limit,
-            "scroll_id": scroll_id,
-        },
-        timeout=120.0,
-    )
+    try:
+        resp = await client.get(
+            SOCRATA_CATALOG_API,
+            params={
+                "domains": domain,
+                "only": "datasets",
+                "limit": limit,
+                "scroll_id": scroll_id,
+            },
+            timeout=120.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("Socrata catalog page failed for %s: %s", domain, exc)
+        return []
     if resp.status_code != 200:
         logger.warning("Socrata catalog page failed for %s: HTTP %s", domain, resp.status_code)
         return []
@@ -275,11 +279,15 @@ async def _fetch_search_batch(
     *,
     limit: int,
 ) -> list[dict]:
-    resp = await client.get(
-        f"{base.rstrip('/')}/api/views/metadata/v1",
-        params={"q": query, "limit": limit},
-        timeout=60.0,
-    )
+    try:
+        resp = await client.get(
+            f"{base.rstrip('/')}/api/views/metadata/v1",
+            params={"q": query, "limit": limit},
+            timeout=60.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("NYC metadata search failed for %r: %s", query, exc)
+        return []
     if resp.status_code != 200:
         logger.warning("NYC metadata search failed for %r: HTTP %s", query, resp.status_code)
         return []
@@ -290,7 +298,7 @@ async def _fetch_search_batch(
 
 
 async def _discover_candidate_ids(client: httpx.AsyncClient, base: str, *, limit: int) -> list[str]:
-    """Collect unique dataset ids from curated seeds and topic searches, newest first."""
+    """Collect unique dataset ids from catalog scroll, topic search, and curated seeds."""
     pool_cap = min(max(limit * DISCOVERY_POOL_MULTIPLIER, limit + len(CURATED_DATASET_IDS)), DISCOVERY_POOL_MAX)
     by_id: dict[str, datetime] = {}
 
@@ -304,17 +312,22 @@ async def _discover_candidate_ids(client: httpx.AsyncClient, base: str, *, limit
     for dataset_id in CURATED_DATASET_IDS:
         note(dataset_id, _EPOCH_MIN)
 
-    for query in METADATA_SEARCH_QUERIES:
-        batch = await _fetch_search_batch(
-            client,
-            base,
-            query,
-            limit=DISCOVERY_PAGE_SIZE,
-        )
-        for item in batch:
-            if not _is_catalog_visible(search_item=item):
-                continue
-            note(item.get("id"), _search_item_recency(item))
+    await _discover_from_catalog(client, socrata_domain(base), note, pool_cap=pool_cap)
+
+    if len(by_id) < pool_cap:
+        for query in METADATA_SEARCH_QUERIES:
+            if len(by_id) >= pool_cap:
+                break
+            batch = await _fetch_search_batch(
+                client,
+                base,
+                query,
+                limit=DISCOVERY_PAGE_SIZE,
+            )
+            for item in batch:
+                if not _is_catalog_visible(search_item=item):
+                    continue
+                note(item.get("id"), _search_item_recency(item))
 
     ranked = sorted(by_id.items(), key=lambda pair: pair[1], reverse=True)
     selected = [ds_id for ds_id, _ in ranked[:pool_cap]]
