@@ -11,6 +11,7 @@ import { ResultsDisclaimer } from "@/components/ResultsDisclaimer";
 import { SourceAttributions } from "@/components/SourceAttributions";
 import { VegaChart } from "@/components/VegaChart";
 import { getSessionResults, type Finding, type SessionResults } from "@/lib/api";
+import { formatLastUpdated, stuckWarning } from "@/lib/activity-status";
 import { formatSummaryBlocks } from "@/lib/summary-format";
 
 function summaryFallbackNote(reason: string | null | undefined): string | null {
@@ -97,12 +98,27 @@ function resolveDisplayFindings(data: SessionResults): { top: Finding[]; rest: F
   return { top, rest };
 }
 
-function ResultsSkeleton({ message, percent }: { message: string; percent?: number }) {
+function ResultsSkeleton({
+  message,
+  percent,
+  updatedAt,
+}: {
+  message: string;
+  percent?: number;
+  updatedAt?: string;
+}) {
+  const isActive = true;
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:py-10">
       <section className="rounded-xl border border-[#e8ddd0] bg-[#faf8f5] p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-pink-700">Key findings</h2>
-        <LoadingBlock message={message} minHeight="min-h-[180px]" percent={percent} />
+        <LoadingBlock
+          message={message}
+          minHeight="min-h-[180px]"
+          percent={percent}
+          activityHint={formatLastUpdated(updatedAt)}
+          stuckHint={stuckWarning(updatedAt, isActive)}
+        />
       </section>
       <section className="rounded-xl border border-[#e8ddd0] bg-white p-4 shadow-sm sm:p-5 animate-pulse">
         <div className="h-4 w-32 rounded bg-[#e8ddd0]" />
@@ -119,6 +135,13 @@ function ResultsContent() {
   const [data, setData] = useState<SessionResults | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!sessionId || error) return;
+    const timer = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [sessionId, error]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -196,6 +219,7 @@ function ResultsContent() {
       <ResultsSkeleton
         message={loadingMessage}
         percent={data?.percent}
+        updatedAt={data?.updated_at}
       />
     );
   }

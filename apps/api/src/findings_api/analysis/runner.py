@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import replace
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -33,7 +34,6 @@ from findings_api.analysis.tests.group_comparison import run_group_comparison
 from findings_api.analysis.tests.trend import run_trend
 from findings_api.analysis.types import Finding
 from findings_api.ingest.duckdb_store import connect
-from findings_api.ingest.pipeline import apply_session_config
 from findings_api.models import AnalysisSession
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ def _set_progress(
     session.phase = phase
     session.message = message
     session.percent = percent
+    session.updated_at = datetime.now(timezone.utc)
     if status:
         session.status = status
     db.add(session)
@@ -147,6 +148,8 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             raise ValueError("No ingested datasets to analyze")
 
         if session.duckdb_path:
+            from findings_api.ingest.pipeline import apply_session_config
+
             apply_session_config(db, session_id)
             session = db.get(AnalysisSession, session_id)
             if not session:

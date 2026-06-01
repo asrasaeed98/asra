@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -7,7 +9,7 @@ from findings_api.catalog.sync_all import run_full_sync
 from findings_api.catalog.probe_batch import run_probe_batch
 from findings_api.config import settings
 from findings_api.db import get_db
-from findings_api.models import CatalogResource
+from findings_api.models import AnalysisSession, ApiUsage, CatalogResource
 from findings_api.schemas import SyncResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -24,6 +26,34 @@ class CatalogHealthResponse(BaseModel):
 class ProbeBatchResponse(BaseModel):
     probed: int
     newly_ingestible: int
+
+
+class RunSnapshotSession(BaseModel):
+    id: str
+    status: str
+    phase: str
+    message: str | None = None
+    percent: int
+    error: str | None = None
+    resource_count: int
+    created_at: str
+    updated_at: str
+    duration_sec: float | None = None
+
+
+class RunSnapshotUsage(BaseModel):
+    month: str
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    calls: int
+
+
+class RunSnapshotResponse(BaseModel):
+    fetched_at: str
+    summary: dict[str, int | dict[str, int]]
+    sessions: list[RunSnapshotSession]
+    api_usage: list[RunSnapshotUsage]
 
 
 def _check_admin(authorization: str | None = Header(default=None)) -> None:
@@ -68,6 +98,70 @@ async def probe_catalog_batch(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Probe batch failed: {exc}") from exc
     return ProbeBatchResponse(**result)
+
+
+@router.get("/runs/snapshot", response_model=RunSnapshotResponse)
+def runs_snapshot(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _: None = Depends(_check_admin),
+):
+    """Recent analysis sessions and AI usage for ops dashboards."""
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+
+    rows = (
+        db.execute(
+            select(AnalysisSession).order_by(AnalysisSession.created_at.desc()).limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+    by_status: dict[str, int] = {}
+    sessions: list[RunSnapshotSession] = []
+    for row in rows:
+        by_status[row.status] = by_status.get(row.status, 0) + 1
+        duration = None
+        if row.created_at and row.updated_at:
+            duration = (row.updated_at - row.created_at).total_seconds()
+        sessions.append(
+            RunSnapshotSession(
+                id=row.id,
+                status=row.status,
+                phase=row.phase,
+                message=row.message,
+                percent=row.percent,
+                error=row.error,
+                resource_count=len(row.resource_ids or []),
+                created_at=row.created_at.isoformat() if row.created_at else "",
+                updated_at=row.updated_at.isoformat() if row.updated_at else "",
+                duration_sec=duration,
+            )
+        )
+
+    usage_rows = (
+        db.execute(select(ApiUsage).order_by(ApiUsage.month.desc()).limit(6)).scalars().all()
+    )
+    api_usage = [
+        RunSnapshotUsage(
+            month=u.month,
+            tokens_in=u.tokens_in,
+            tokens_out=u.tokens_out,
+            cost_usd=u.cost_usd,
+            calls=u.calls,
+        )
+        for u in usage_rows
+    ]
+
+    return RunSnapshotResponse(
+        fetched_at=datetime.now(timezone.utc).isoformat(),
+        summary={
+            "total_recent": len(sessions),
+            "by_status": by_status,
+        },
+        sessions=sessions,
+        api_usage=api_usage,
+    )
 
 
 @router.get("/catalog/health", response_model=CatalogHealthResponse)

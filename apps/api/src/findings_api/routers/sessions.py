@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -24,6 +25,7 @@ from findings_api.schemas import (
     SessionResponse,
     SessionStatusResponse,
 )
+from findings_api.progress_ticker import ProgressTicker
 from findings_api.session_recovery import fail_stale_session, recover_stale_sessions
 
 logger = logging.getLogger(__name__)
@@ -61,17 +63,19 @@ def _schedule_full_run(background_tasks: BackgroundTasks, session_id: str) -> No
         factory = get_session_factory()
         db = factory()
         try:
-            asyncio.run(run_ingest(db, session_id))
-            session = db.get(AnalysisSession, session_id)
-            if not session or session.status != "ready":
-                return
-            session.status = "analyzing"
-            session.phase = "prepare"
-            session.message = "Preparing analysis…"
-            session.percent = 5
-            db.add(session)
-            db.commit()
-            asyncio.run(run_analysis_pipeline(db, session_id))
+            with ProgressTicker(session_id):
+                asyncio.run(run_ingest(db, session_id))
+                session = db.get(AnalysisSession, session_id)
+                if not session or session.status != "ready":
+                    return
+                session.status = "analyzing"
+                session.phase = "prepare"
+                session.message = "Preparing analysis…"
+                session.percent = 5
+                session.updated_at = datetime.now(timezone.utc)
+                db.add(session)
+                db.commit()
+                asyncio.run(run_analysis_pipeline(db, session_id))
         finally:
             db.close()
 
@@ -156,7 +160,8 @@ def _schedule_analysis(background_tasks: BackgroundTasks, session_id: str) -> No
         factory = get_session_factory()
         db = factory()
         try:
-            asyncio.run(run_analysis_pipeline(db, session_id))
+            with ProgressTicker(session_id):
+                asyncio.run(run_analysis_pipeline(db, session_id))
         finally:
             db.close()
 
@@ -230,6 +235,7 @@ def session_status(session_id: str, db: Session = Depends(get_db)):
         percent=session.percent,
         row_counts=session.row_counts,
         estimate_remaining_sec=estimate,
+        updated_at=session.updated_at,
     )
 
 
@@ -274,6 +280,7 @@ def session_results(session_id: str, db: Session = Depends(get_db)):
         "ai_summary_fallback_reason": results.get("ai_summary_fallback_reason"),
         "chat": _chat_state(preview, db),
         "message": session.message,
+        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
         "preview": session.preview,
         "catalogs": catalogs,
     }

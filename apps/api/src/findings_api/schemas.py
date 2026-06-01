@@ -125,6 +125,7 @@ class SessionStatusResponse(BaseModel):
     percent: int
     row_counts: dict[str, int] | None = None
     estimate_remaining_sec: int | None = None
+    updated_at: datetime | None = None
 
 
 class SessionResponse(BaseModel):

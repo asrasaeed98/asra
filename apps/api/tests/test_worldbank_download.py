@@ -171,6 +171,68 @@ def test_worldbank_page1_400_is_fatal():
     assert "400" in str(exc.value)
 
 
+def test_worldbank_stops_at_row_cap(monkeypatch):
+    monkeypatch.setattr(settings, "row_cap", 3)
+    monkeypatch.setattr(settings, "wb_download_per_page", 2)
+
+    def responses(page: int) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[{"pages": 5, "page": page, "total": 10}, [{"value": page}, {"value": page + 1}]],
+        )
+
+    data = _run(
+        _with_client(
+            _wb_handler(responses),
+            lambda c: fetch_worldbank_json(
+                "https://api.worldbank.org/v2/country/all/indicator/CAP",
+                client=c,
+            ),
+        )
+    )
+    _meta, rows = json.loads(data)
+    assert len(rows) == 3
+
+
+def test_worldbank_uses_settings_per_page_param():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params.get("per_page", ""))
+        return httpx.Response(200, json=[{"pages": 1, "page": 1, "total": 1}, [{"value": 1}]])
+
+    _run(
+        _with_client(
+            handler,
+            lambda c: fetch_worldbank_json(
+                "https://api.worldbank.org/v2/country/all/indicator/OK",
+                client=c,
+            ),
+        )
+    )
+    assert seen == [str(settings.wb_download_per_page)]
+
+
+def test_worldbank_ignores_per_page_in_catalog_url(monkeypatch):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params.get("per_page", ""))
+        return httpx.Response(200, json=[{"pages": 1, "page": 1, "total": 1}, [{"value": 1}]])
+
+    monkeypatch.setattr(settings, "wb_download_per_page", 500)
+    _run(
+        _with_client(
+            handler,
+            lambda c: fetch_worldbank_json(
+                "https://api.worldbank.org/v2/country/all/indicator/OK?format=json&per_page=10000",
+                client=c,
+            ),
+        )
+    )
+    assert seen == ["500"]
+
+
 def test_worldbank_transient_5xx_retried_then_paginates():
     calls = {"n": 0}
 

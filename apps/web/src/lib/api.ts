@@ -136,6 +136,7 @@ export type SessionResults = {
   ai_summary_fallback_reason?: string | null;
   chat?: ChatState;
   message?: string;
+  updated_at?: string;
   catalogs?: CatalogResult[];
 };
 
@@ -189,6 +190,7 @@ export type SessionStatus = {
   percent: number;
   row_counts?: Record<string, number>;
   estimate_remaining_sec?: number;
+  updated_at?: string;
 };
 
 export type SessionDetail = {

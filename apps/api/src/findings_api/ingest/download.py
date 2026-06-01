@@ -21,6 +21,7 @@ from findings_api.config import settings
 logger = logging.getLogger(__name__)
 
 DownloadProgressCallback = Callable[[str], None]
+HeartbeatCallback = Callable[[], None]
 
 
 class DownloadError(Exception):
@@ -80,6 +81,7 @@ async def _get_with_retry(
     source: str,
     params: dict | None = None,
     timeout: float = 120.0,
+    on_heartbeat: HeartbeatCallback | None = None,
 ) -> httpx.Response:
     """GET with retry/backoff on transient errors.
 
@@ -106,6 +108,8 @@ async def _get_with_retry(
                 redact_secrets(str(exc)),
             )
             if attempt < attempts:
+                if on_heartbeat:
+                    on_heartbeat()
                 await asyncio.sleep(_backoff_seconds(attempt))
                 continue
             break
@@ -118,6 +122,8 @@ async def _get_with_retry(
                 attempt,
                 attempts,
             )
+            if on_heartbeat:
+                on_heartbeat()
             await asyncio.sleep(_backoff_seconds(attempt))
             continue
 
@@ -138,6 +144,7 @@ async def _post_with_retry(
     source: str,
     json_body: dict,
     timeout: float = 120.0,
+    on_heartbeat: HeartbeatCallback | None = None,
 ) -> httpx.Response:
     """POST JSON with retry/backoff on transient errors."""
     attempts = max(1, settings.download_max_retries)
@@ -158,6 +165,8 @@ async def _post_with_retry(
                 redact_secrets(str(exc)),
             )
             if attempt < attempts:
+                if on_heartbeat:
+                    on_heartbeat()
                 await asyncio.sleep(_backoff_seconds(attempt))
                 continue
             break
@@ -170,6 +179,8 @@ async def _post_with_retry(
                 attempt,
                 attempts,
             )
+            if on_heartbeat:
+                on_heartbeat()
             await asyncio.sleep(_backoff_seconds(attempt))
             continue
 
@@ -189,6 +200,7 @@ async def fetch_resource_bytes(
     client: httpx.AsyncClient | None = None,
     portal: str = "",
     on_progress: DownloadProgressCallback | None = None,
+    on_heartbeat: HeartbeatCallback | None = None,
     title: str = "",
     row_count_hint: int | None = None,
 ) -> tuple[bytes, str]:
@@ -197,13 +209,19 @@ async def fetch_resource_bytes(
         return await fetch_fred_json(url, client=client), "json"
 
     if portal == "world_bank" or "api.worldbank.org" in url.lower():
-        return await fetch_worldbank_json(url, client=client, on_progress=on_progress), "json"
+        return await fetch_worldbank_json(
+            url,
+            client=client,
+            on_progress=on_progress,
+            on_heartbeat=on_heartbeat,
+        ), "json"
 
     if portal == "nyc_open_data" or is_socrata_query_url(url):
         return await fetch_socrata_json(
             url,
             client=client,
             on_progress=on_progress,
+            on_heartbeat=on_heartbeat,
             title=title,
             row_count_hint=row_count_hint,
         ), "json"
@@ -218,7 +236,11 @@ async def fetch_resource_bytes(
         client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
     try:
         resp = await _get_with_retry(
-            client, url, source="The data source", timeout=timeout
+            client,
+            url,
+            source="The data source",
+            timeout=timeout,
+            on_heartbeat=on_heartbeat,
         )
         if resp.status_code >= 400:
             raise DownloadError(_friendly_http_error("The data source", resp.status_code))
@@ -238,6 +260,7 @@ async def fetch_worldbank_json(
     *,
     client: httpx.AsyncClient | None = None,
     on_progress: DownloadProgressCallback | None = None,
+    on_heartbeat: HeartbeatCallback | None = None,
 ) -> bytes:
     """Paginate World Bank indicator API until all rows are fetched (within caps).
 
@@ -252,26 +275,36 @@ async def fetch_worldbank_json(
         client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
 
     base_url = url.split("?")[0]
-    params: dict[str, str | int] = {"format": "json", "per_page": 500}
+    params: dict[str, str | int] = {
+        "format": "json",
+        "per_page": max(1, settings.wb_download_per_page),
+    }
     if "?" in url:
         for part in url.split("?", 1)[1].split("&"):
             if "=" not in part:
                 continue
             key, value = part.split("=", 1)
-            if key.lower() in {"format", "page"}:
+            if key.lower() in {"format", "page", "per_page"}:
                 continue
             params[key] = value
 
     all_rows: list[dict] = []
     meta: dict = {}
     page = 1
-    max_pages = 80
+    row_target = settings.row_cap
+    max_pages = max(1, (row_target + settings.wb_download_per_page - 1) // settings.wb_download_per_page)
 
     try:
         while page <= max_pages:
             params["page"] = page
             try:
-                resp = await _get_with_retry(client, base_url, source="World Bank", params=params)
+                resp = await _get_with_retry(
+                    client,
+                    base_url,
+                    source="World Bank",
+                    params=params,
+                    on_heartbeat=on_heartbeat,
+                )
             except DownloadError:
                 if all_rows:
                     logger.warning(
@@ -314,7 +347,18 @@ async def fetch_worldbank_json(
             if not rows:
                 break
             all_rows.extend(rows)
+            total_rows = int(meta.get("total") or len(all_rows))
+            row_target = min(settings.row_cap, total_rows)
             total_pages = int(meta.get("pages") or 1)
+            if on_progress:
+                from findings_api.ingest.download_policy import download_progress_message
+
+                on_progress(
+                    download_progress_message(rows_done=len(all_rows), row_target=row_target)
+                )
+            if len(all_rows) >= row_target:
+                all_rows = all_rows[:row_target]
+                break
             if page >= total_pages:
                 break
             page += 1
@@ -326,8 +370,6 @@ async def fetch_worldbank_json(
                     len(all_rows),
                 )
                 break
-            if on_progress and page == 1:
-                on_progress(f"Downloading World Bank data ({len(all_rows):,} rows so far)…")
     except httpx.HTTPError as exc:
         raise DownloadError(redact_secrets(str(exc))) from exc
     finally:
@@ -386,6 +428,7 @@ async def fetch_socrata_json(
     *,
     client: httpx.AsyncClient | None = None,
     on_progress: DownloadProgressCallback | None = None,
+    on_heartbeat: HeartbeatCallback | None = None,
     title: str = "",
     row_count_hint: int | None = None,
 ) -> bytes:
@@ -413,6 +456,7 @@ async def fetch_socrata_json(
                 source="NYC Open Data",
                 json_body={"query": page_query},
                 timeout=settings.download_chunk_timeout_sec,
+                on_heartbeat=on_heartbeat,
             )
             if resp.status_code >= 400:
                 if all_rows:

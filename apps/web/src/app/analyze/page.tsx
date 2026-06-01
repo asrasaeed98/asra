@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { FunFindsLoader } from "@/components/FunFindsLoader";
 import { formatSeconds, LoadingBlock } from "@/components/LoadingBlock";
 import { getSessionStatus, type SessionStatus } from "@/lib/api";
+import { formatLastUpdated, stuckWarning } from "@/lib/activity-status";
 
 const PHASES = [
   { id: "ingest", label: "Loading your data" },
@@ -37,6 +38,13 @@ function AnalyzeContent() {
   const [phaseMessage, setPhaseMessage] = useState(PHASES[0].label);
   const [error, setError] = useState<string | null>(null);
   const [pollWarning, setPollWarning] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!sessionId || error) return;
+    const timer = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [sessionId, error]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -115,6 +123,10 @@ function AnalyzeContent() {
         ? "May take several minutes for large datasets"
         : "Usually 2–4 minutes";
 
+  const isActive = status?.status === "ingesting" || status?.status === "analyzing";
+  const activityHint = formatLastUpdated(status?.updated_at);
+  const stuckHint = stuckWarning(status?.updated_at, isActive);
+
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
       <div className="mb-8 flex justify-center">
@@ -122,6 +134,14 @@ function AnalyzeContent() {
       </div>
       <h1 className="text-center text-xl font-semibold text-stone-800">Analysis in progress</h1>
       <p className="mt-1 text-center text-sm text-stone-500">{timeHint}</p>
+      {activityHint && (
+        <p className="mt-2 text-center text-xs text-stone-500">{activityHint}</p>
+      )}
+      {stuckHint && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900">
+          {stuckHint}
+        </p>
+      )}
       {pollWarning && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900">
           {pollWarning}

@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     download_large_timeout_sec: float = 300.0
     socrata_download_chunk_rows: int = 10_000
     download_large_row_hint: int = 50_000
+    wb_download_per_page: int = 500
     chat_max_questions: int = 5
     chat_max_tokens: int = 400
     chat_history_turns: int = 4

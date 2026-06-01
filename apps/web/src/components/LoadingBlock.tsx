@@ -5,6 +5,8 @@ type LoadingBlockProps = {
   minHeight?: string;
   percent?: number;
   timeHint?: string;
+  activityHint?: string;
+  stuckHint?: string;
 };
 
 export function LoadingBlock({
@@ -12,6 +14,8 @@ export function LoadingBlock({
   minHeight = "min-h-[200px]",
   percent,
   timeHint,
+  activityHint,
+  stuckHint,
 }: LoadingBlockProps) {
   const showBar = percent != null && percent >= 0;
 
@@ -32,6 +36,14 @@ export function LoadingBlock({
         </div>
       )}
       {timeHint && <p className="mt-2 text-center text-xs text-stone-400">{timeHint}</p>}
+      {activityHint && (
+        <p className="mt-2 text-center text-xs text-stone-500">{activityHint}</p>
+      )}
+      {stuckHint && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900">
+          {stuckHint}
+        </p>
+      )}
     </div>
   );
 }
