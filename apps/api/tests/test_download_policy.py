@@ -57,55 +57,97 @@ def test_resource_is_large():
     assert resource_is_large(rec) is True
 
 
-def test_fetch_socrata_json_paginates(monkeypatch):
-    monkeypatch.setattr(settings, "socrata_download_chunk_rows", 2)
-    monkeypatch.setattr(settings, "row_cap", 5)
+def _make_offset_client(data_by_offset: dict[int, list], *, calls: list | None = None):
+    """FakeClient that dispatches by $offset so parallel chunks work correctly."""
 
-    pages = [
-        [{"a": 1}, {"a": 2}],
-        [{"a": 3}],
-    ]
-    call_count = 0
-
-    class FakeClient:
-        async def post(self, *_args, **_kwargs):
-            nonlocal call_count
-            idx = call_count
-            call_count += 1
-            payload = pages[idx] if idx < len(pages) else []
+    class _FakeClient:
+        async def get(self, url, *, params=None, timeout=None, headers=None):
+            offset = int((params or {}).get("$offset", 0))
+            if calls is not None:
+                calls.append({"url": url, "params": dict(params or {})})
+            payload = data_by_offset.get(offset, [])
             resp = MagicMock()
             resp.status_code = 200
             resp.content = json.dumps(payload).encode()
             return resp
 
+    return _FakeClient()
+
+
+def test_fetch_socrata_json_paginates(monkeypatch):
+    monkeypatch.setattr(settings, "socrata_download_chunk_rows", 2)
+    monkeypatch.setattr(settings, "row_cap", 5)
+    monkeypatch.setattr(settings, "socrata_concurrent_chunks", 3)
+
+    data_by_offset = {
+        0: [{"a": 1}, {"a": 2}],
+        2: [{"a": 3}],
+        4: [],  # end-of-data sentinel
+    }
+    calls: list[dict] = []
+
     url = (
         "https://data.cityofnewyork.us/api/v3/views/abc/query.json"
         "?socrata_soql=SELECT+a+LIMIT+5"
     )
-    data = asyncio.run(fetch_socrata_json(url, client=FakeClient()))
+    data = asyncio.run(fetch_socrata_json(url, client=_make_offset_client(data_by_offset, calls=calls)))
     rows = json.loads(data.decode())
     assert len(rows) == 3
-    assert call_count == 2
+    # All planned offsets (0, 2, 4) are fetched in one parallel wave.
+    offsets_seen = {c["params"]["$offset"] for c in calls}
+    assert 0 in offsets_seen
+    assert 2 in offsets_seen
+    # SODA2 GET endpoint and $select forwarded.
+    assert all(c["url"] == "https://data.cityofnewyork.us/resource/abc.json" for c in calls)
+    assert all(c["params"].get("$select") == "a" for c in calls)
 
 
 def test_fetch_socrata_json_respects_byte_cap(monkeypatch):
     monkeypatch.setattr(settings, "socrata_download_chunk_rows", 1)
-    monkeypatch.setattr(settings, "row_cap", 10)
+    monkeypatch.setattr(settings, "row_cap", 3)
     monkeypatch.setattr(settings, "max_download_bytes", 80)
+    monkeypatch.setattr(settings, "socrata_concurrent_chunks", 3)
 
-    rows = [[{"payload": "x" * 50}], [{"payload": "y" * 50}]]
+    # Each row is ~55 bytes serialised; 3 rows together exceed the 80-byte cap.
+    data_by_offset = {
+        0: [{"payload": "x" * 40}],
+        1: [{"payload": "y" * 40}],
+        2: [{"payload": "z" * 40}],
+    }
 
-    class FakeClient:
-        async def post(self, *_args, **_kwargs):
+    url = (
+        "https://data.cityofnewyork.us/api/v3/views/abc/query.json"
+        "?socrata_soql=SELECT+payload+LIMIT+3"
+    )
+    data = asyncio.run(fetch_socrata_json(url, client=_make_offset_client(data_by_offset)))
+    loaded = json.loads(data.decode())
+    assert len(loaded) < 3
+    assert len(json.dumps(loaded).encode()) <= 80
+
+
+def test_fetch_socrata_json_partial_on_chunk_failure(monkeypatch):
+    """Later-chunk failure returns partial rows instead of raising."""
+    monkeypatch.setattr(settings, "socrata_download_chunk_rows", 2)
+    monkeypatch.setattr(settings, "row_cap", 6)
+    monkeypatch.setattr(settings, "socrata_concurrent_chunks", 3)
+
+    class FailingClient:
+        async def get(self, url, *, params=None, timeout=None, headers=None):
+            offset = int((params or {}).get("$offset", 0))
             resp = MagicMock()
-            resp.status_code = 200
-            resp.content = json.dumps(rows.pop(0) if rows else []).encode()
+            if offset == 0:
+                resp.status_code = 200
+                resp.content = json.dumps([{"a": 1}, {"a": 2}]).encode()
+            else:
+                resp.status_code = 500
+                resp.content = b"error"
             return resp
 
     url = (
         "https://data.cityofnewyork.us/api/v3/views/abc/query.json"
-        "?socrata_soql=SELECT+payload+LIMIT+10"
+        "?socrata_soql=SELECT+a+LIMIT+6"
     )
-    data = asyncio.run(fetch_socrata_json(url, client=FakeClient()))
-    loaded = json.loads(data.decode())
-    assert len(loaded) == 1
+    data = asyncio.run(fetch_socrata_json(url, client=FailingClient()))
+    rows = json.loads(data.decode())
+    # First chunk succeeded, later ones failed — partial result returned.
+    assert len(rows) == 2

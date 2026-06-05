@@ -12,8 +12,10 @@ import httpx
 
 from findings_api.catalog.socrata import (
     is_socrata_query_url,
-    page_soql,
     parse_query_url,
+    soda2_resource_url,
+    socrata_headers,
+    soql_select_columns,
     split_soql_limit,
 )
 from findings_api.config import settings
@@ -81,6 +83,7 @@ async def _get_with_retry(
     source: str,
     params: dict | None = None,
     timeout: float = 120.0,
+    headers: dict | None = None,
     on_heartbeat: HeartbeatCallback | None = None,
 ) -> httpx.Response:
     """GET with retry/backoff on transient errors.
@@ -96,7 +99,7 @@ async def _get_with_retry(
 
     for attempt in range(1, attempts + 1):
         try:
-            resp = await client.get(url, params=params, timeout=timeout)
+            resp = await client.get(url, params=params, timeout=timeout, headers=headers)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_exc = exc
             resp = None
@@ -432,82 +435,128 @@ async def fetch_socrata_json(
     title: str = "",
     row_count_hint: int | None = None,
 ) -> bytes:
-    """Download rows from a SODA3 query URL in paginated chunks (reliable up to byte cap)."""
-    _base, _dataset_id, soql = parse_query_url(url)
-    endpoint = url.split("?", 1)[0]
-    base_query, parsed_limit = split_soql_limit(soql)
+    """Download rows from a Socrata dataset using concurrent SODA2 GET chunks.
+
+    Uses the public SODA2 ``/resource/{id}.json`` GET endpoint (the SODA3
+    ``/query.json`` endpoint now requires an app token and returns 403).
+
+    All chunk offsets are planned upfront from ``row_target``, then fired
+    concurrently under a bounded semaphore (``socrata_concurrent_chunks``).
+    For 100k rows at 10k/chunk this collapses ~10 serial round-trips into
+    ~2 parallel waves, roughly 5× faster.
+
+    Resilience mirrors the sequential version:
+    - Offset-0 failure is fatal.
+    - Any later-chunk failure returns partial data with a warning.
+    - Byte cap is enforced after reassembly.
+    """
+    base, dataset_id, soql = parse_query_url(url)
+    endpoint = soda2_resource_url(base, dataset_id)
+    select_clause = soql_select_columns(soql)
+    _base_query, parsed_limit = split_soql_limit(soql)
     row_target = min(parsed_limit or settings.row_cap, settings.row_cap)
     chunk_size = max(1, settings.socrata_download_chunk_rows)
+    concurrency = max(1, settings.socrata_concurrent_chunks)
+    req_headers = socrata_headers()
+
+    # Plan every chunk offset upfront. If the real dataset is smaller than
+    # row_target, the extra chunks will return empty and be discarded.
+    offsets = list(range(0, row_target, chunk_size))
+    n_chunks = len(offsets)
 
     owns_client = client is None
     if owns_client:
         client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
 
-    all_rows: list[dict] = []
-    offset = 0
+    # Results keyed by position so reassembly is order-stable.
+    chunk_results: dict[int, list[dict] | None] = {}
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _fetch_chunk(idx: int, offset: int) -> None:
+        take = min(chunk_size, row_target - offset)
+        params: dict[str, str | int] = {"$limit": take, "$offset": offset}
+        if select_clause:
+            params["$select"] = select_clause
+        async with sem:
+            try:
+                resp = await _get_with_retry(
+                    client,  # type: ignore[arg-type]
+                    endpoint,
+                    source="NYC Open Data",
+                    params=params,
+                    timeout=settings.download_chunk_timeout_sec,
+                    headers=req_headers,
+                    on_heartbeat=on_heartbeat,
+                )
+            except DownloadError:
+                chunk_results[idx] = None
+                return
+
+        if resp.status_code >= 400:
+            chunk_results[idx] = None
+            return
+
+        page_data = resp.content
+        try:
+            page_rows = json.loads(page_data.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError):
+            chunk_results[idx] = None
+            return
+
+        chunk_results[idx] = page_rows if isinstance(page_rows, list) else None
 
     try:
-        while len(all_rows) < row_target:
-            take = min(chunk_size, row_target - len(all_rows))
-            page_query = page_soql(base_query, limit=take, offset=offset)
-            resp = await _post_with_retry(
-                client,
-                endpoint,
-                source="NYC Open Data",
-                json_body={"query": page_query},
-                timeout=settings.download_chunk_timeout_sec,
-                on_heartbeat=on_heartbeat,
-            )
-            if resp.status_code >= 400:
-                if all_rows:
-                    logger.warning(
-                        "Socrata pagination stopped at offset %s (HTTP %s); returning %s rows",
-                        offset,
-                        resp.status_code,
-                        len(all_rows),
+        await asyncio.gather(*[_fetch_chunk(i, off) for i, off in enumerate(offsets)])
+
+        # Reassemble in order. Stop at the first chunk that came back empty
+        # (signals end of actual data) or failed.
+        all_rows: list[dict] = []
+        for idx in range(n_chunks):
+            page = chunk_results.get(idx)
+            if page is None:
+                if idx == 0:
+                    raise DownloadError(
+                        _friendly_http_error("NYC Open Data", 0)
+                        if not chunk_results
+                        else "NYC Open Data returned an unexpected response."
                     )
-                    break
-                raise DownloadError(_friendly_http_error("NYC Open Data", resp.status_code))
-
-            page_data = resp.content
-            _check_download_size(page_data)
-            page_rows = json.loads(page_data.decode("utf-8", errors="replace"))
-            if not isinstance(page_rows, list):
-                raise DownloadError("NYC Open Data returned an unexpected response.")
-            if not page_rows:
-                break
-
-            trial = all_rows + page_rows
-            encoded = json.dumps(trial).encode("utf-8")
-            if len(encoded) > settings.max_download_bytes:
                 logger.warning(
-                    "Socrata download truncated at %s rows (byte cap %sMB)",
-                    len(all_rows),
-                    settings.max_download_bytes // 1_000_000,
+                    "Socrata chunk %s/%s failed; returning %s partial rows",
+                    idx + 1, n_chunks, len(all_rows),
                 )
                 break
-
-            all_rows = trial
-            offset += len(page_rows)
-
+            if not page:
+                break  # real end of data reached before row_target
+            all_rows.extend(page)
             if on_progress:
                 from findings_api.ingest.download_policy import download_progress_message
-
                 on_progress(download_progress_message(rows_done=len(all_rows), row_target=row_target))
-
-            if len(page_rows) < take:
-                break
 
         if not all_rows:
             raise DownloadError("NYC Open Data query returned no rows")
 
+        # Trim to row_target (parallel planning may over-fetch by up to one chunk).
+        all_rows = all_rows[:row_target]
+
         result = json.dumps(all_rows).encode("utf-8")
-        _check_download_size(result)
+        if len(result) > settings.max_download_bytes:
+            logger.warning(
+                "Socrata download truncated due to byte cap (%sMB)",
+                settings.max_download_bytes // 1_000_000,
+            )
+            # Trim rows until we fit; binary search would be faster but this
+            # path is rare (only hits with extremely wide rows).
+            while all_rows and len(result) > settings.max_download_bytes:
+                all_rows = all_rows[: max(1, len(all_rows) * 9 // 10)]
+                result = json.dumps(all_rows).encode("utf-8")
+
         logger.info(
-            "Socrata download complete%s: %s rows, %.1fMB",
+            "Socrata download complete%s: %s rows, %.1fMB, %s chunks (concurrency=%s)",
             f" ({title})" if title else "",
             len(all_rows),
             len(result) / 1_000_000,
+            n_chunks,
+            concurrency,
         )
         return result
     except httpx.HTTPError as exc:

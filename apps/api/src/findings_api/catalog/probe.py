@@ -211,26 +211,34 @@ async def _probe_fred_url(url: str, *, client: httpx.AsyncClient) -> ProbeResult
 
 
 async def _probe_socrata_url(url: str, *, client: httpx.AsyncClient) -> ProbeResult:
-    """Probe a SODA3 query URL via POST (small sample)."""
+    """Probe a Socrata dataset via a small SODA2 GET sample.
+
+    The SODA3 ``/query.json`` endpoint now requires an app token (403), so we
+    sample the public SODA2 ``/resource/{id}.json`` endpoint instead.
+    """
+    from findings_api.catalog.socrata import (
+        soda2_resource_url,
+        socrata_headers,
+        soql_select_columns,
+    )
+
     try:
-        _base, _dataset_id, soql = parse_query_url(url)
+        base, dataset_id, soql = parse_query_url(url)
     except ValueError as exc:
         return ProbeResult(False, str(exc), "HTTP_ERROR")
 
-    import re
+    sample_n = max(settings.catalog_min_rows, 50)
+    select_clause = soql_select_columns(soql)
+    params: dict[str, str | int] = {"$limit": sample_n, "$offset": 0}
+    if select_clause:
+        params["$select"] = select_clause
 
-    sample_soql = re.sub(
-        r"(?i)\blimit\s+\d+",
-        f"LIMIT {max(settings.catalog_min_rows, 50)}",
-        soql,
-        count=1,
-    ) if re.search(r"(?i)\blimit\s+\d+", soql) else f"{soql} LIMIT {max(settings.catalog_min_rows, 50)}"
-
-    endpoint = url.split("?", 1)[0]
+    endpoint = soda2_resource_url(base, dataset_id)
     try:
-        resp = await client.post(
+        resp = await client.get(
             endpoint,
-            json={"query": sample_soql},
+            params=params,
+            headers=socrata_headers(),
             timeout=settings.catalog_probe_timeout_sec,
         )
     except httpx.HTTPError as exc:

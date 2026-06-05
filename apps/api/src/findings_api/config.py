@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     fred_sync_max_series: int = 150
     fred_sync_max_indexed: int = 0
     nyc_open_data_base: str = "https://data.cityofnewyork.us"
+    # Optional Socrata app token. Not required for public datasets, but raises
+    # the anonymous rate limit. Sent as the X-App-Token header when set.
+    socrata_app_token: str = ""
     nyc_sync_max_ingestible: int = 20
     nyc_sync_max_indexed: int = 0
     catalog_sync_interval_hours: float = 0
@@ -75,8 +78,14 @@ class Settings(BaseSettings):
     download_chunk_timeout_sec: float = 180.0
     download_large_timeout_sec: float = 300.0
     socrata_download_chunk_rows: int = 10_000
+    # Max concurrent chunk requests per Socrata dataset. The SODA2 public API
+    # is generous; 5 concurrent requests cuts the 10-serial-chunk wall time ~5x
+    # without triggering rate limits on unauthenticated calls.
+    socrata_concurrent_chunks: int = 5
     download_large_row_hint: int = 50_000
-    wb_download_per_page: int = 500
+    # World Bank API accepts up to per_page=32500. A large page size collapses a
+    # 50k-row indicator from ~100 sequential requests to ~3, the dominant download cost.
+    wb_download_per_page: int = 20000
     chat_max_questions: int = 5
     chat_max_tokens: int = 400
     chat_history_turns: int = 4

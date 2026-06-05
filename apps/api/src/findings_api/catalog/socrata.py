@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import parse_qs, urlencode, urlparse
-
-from urllib.parse import urlparse
 
 import httpx
 
@@ -72,10 +71,36 @@ def parse_query_url(url: str) -> tuple[str, str, str]:
     return base, dataset_id, soql
 
 
+def soda2_resource_url(base: str, dataset_id: str) -> str:
+    """Classic SODA2 resource endpoint (public, no auth required).
+
+    The SODA3 ``/api/v3/views/{id}/query.json`` endpoint now returns
+    ``403 authentication_required``; the SODA2 ``/resource/{id}.json`` GET
+    endpoint still serves public datasets without a token.
+    """
+    return f"{base.rstrip('/')}/resource/{dataset_id}.json"
+
+
+def soql_select_columns(soql: str) -> str | None:
+    """Column list for a SODA2 ``$select`` param, or None for ``SELECT *``."""
+    base, _ = split_soql_limit(soql)
+    match = re.match(r"(?is)^\s*select\s+(.*)$", base)
+    if not match:
+        return None
+    cols = match.group(1).strip()
+    if not cols or cols == "*":
+        return None
+    return cols
+
+
+def socrata_headers() -> dict[str, str]:
+    """Auth headers for Socrata requests. App token is optional but raises limits."""
+    token = settings.socrata_app_token.strip()
+    return {"X-App-Token": token} if token else {}
+
+
 def split_soql_limit(soql: str) -> tuple[str, int | None]:
     """Return (query without trailing LIMIT, limit value or None)."""
-    import re
-
     stripped = soql.strip().rstrip(";")
     match = re.search(r"\blimit\s+(\d+)\s*$", stripped, flags=re.IGNORECASE)
     if not match:
@@ -166,20 +191,22 @@ async def fetch_socrata_row_count(
     base: str,
     dataset_id: str,
 ) -> int | None:
-    """Return total row count for a Socrata dataset via SODA3 count query."""
-    endpoint = f"{base.rstrip('/')}/api/v3/views/{dataset_id}/query.json"
+    """Return total row count for a Socrata dataset via a SODA2 count query."""
+    endpoint = soda2_resource_url(base, dataset_id)
     try:
-        resp = await client.post(
+        resp = await client.get(
             endpoint,
-            json={"query": "SELECT count(*) AS cnt"},
+            params={"$select": "count(*)"},
+            headers=socrata_headers(),
             timeout=60.0,
         )
         if resp.status_code != 200:
             return None
         rows = resp.json()
-        if not isinstance(rows, list) or not rows:
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
             return None
-        cnt = rows[0].get("cnt")
-        return int(cnt) if cnt is not None else None
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        # SODA2 returns e.g. [{"count": "123"}] — the alias varies, take the first value.
+        value = next(iter(rows[0].values()), None)
+        return int(value) if value is not None else None
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, StopIteration):
         return None
