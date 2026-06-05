@@ -1,6 +1,7 @@
 /** Format AI summary text for display (no markdown titles). */
 
 export type SummaryBlock =
+  | { type: "header"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] };
 

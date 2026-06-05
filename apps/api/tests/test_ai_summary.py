@@ -53,6 +53,7 @@ def test_template_summary_blocks_structure():
 
 def test_parse_summary_json():
     raw = """{
+      "correlation_verdict": "Yes — grant amounts and program areas tend to move together.",
       "intro": "NEH grants show clear regional patterns.",
       "highlights": [
         "Midwest awards are higher on average.",
@@ -62,9 +63,55 @@ def test_parse_summary_json():
     }"""
     blocks = _parse_summary_json(raw)
     assert blocks is not None
-    assert blocks[0]["type"] == "paragraph"
-    assert blocks[1]["type"] == "list"
-    assert len(blocks[1]["items"]) == 2
+    assert blocks[0]["type"] == "header"
+    assert blocks[1]["type"] == "paragraph"
+    assert blocks[2]["type"] == "list"
+    assert len(blocks[2]["items"]) == 2
+
+
+def test_template_two_dataset_correlation_header():
+    blocks = template_summary_blocks(
+        [
+            {
+                "id": "f_1",
+                "type": "spearman_correlation",
+                "value": -0.62,
+                "n": 48,
+                "columns": ["unemployment_rate", "median_income"],
+                "details": {
+                    "primary": True,
+                    "direction": "negative",
+                    "column_labels": ["Unemployment rate", "Median income"],
+                },
+            }
+        ],
+        dataset_titles=["Labor stats", "Income survey"],
+    )
+    assert blocks[0]["type"] == "header"
+    assert blocks[0]["text"].startswith("Yes —")
+    assert "opposite" in blocks[0]["text"]
+    assert not any("Spearman" in str(b) for b in blocks)
+
+
+def test_plain_highlight_avoids_statistics():
+    blocks = template_summary_blocks(
+        [
+            {
+                "id": "f_1",
+                "type": "group_comparison",
+                "columns": ["award_amount", "region"],
+                "details": {
+                    "column_labels": ["Award amount", "Region"],
+                    "highest_group": "Midwest",
+                    "lowest_group": "South",
+                },
+            }
+        ],
+        dataset_titles=["NEH Grants"],
+    )
+    list_block = next(b for b in blocks if b.get("type") == "list")
+    assert list_block["items"][0]
+    assert "Spearman" not in list_block["items"][0]
 
 
 def test_sanitize_summary_strips_markdown_title():

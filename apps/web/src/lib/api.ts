@@ -129,6 +129,7 @@ export type SessionResults = {
   };
   ai_summary: string | null;
   ai_summary_blocks?: Array<
+    | { type: "header"; text: string }
     | { type: "paragraph"; text: string }
     | { type: "list"; items: string[] }
   > | null;

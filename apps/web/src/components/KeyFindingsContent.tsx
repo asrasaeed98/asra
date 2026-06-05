@@ -36,6 +36,16 @@ export function KeyFindingsContent({
   return (
     <div className="mt-3 space-y-4 text-sm leading-relaxed text-stone-700">
       {blocks.map((block, i) => {
+        if (block.type === "header") {
+          return (
+            <p
+              key={`h-${i}`}
+              className="text-base font-semibold leading-snug text-stone-900"
+            >
+              {block.text}
+            </p>
+          );
+        }
         if (block.type === "paragraph") {
           return (
             <p key={`p-${i}`} className="leading-relaxed">

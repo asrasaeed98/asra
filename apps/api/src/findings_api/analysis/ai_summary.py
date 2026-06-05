@@ -20,6 +20,7 @@ _NUMBER_RE = re.compile(
 
 _SYSTEM_PROMPT = (
     "You write plain-language key findings for a public-data analysis app. "
+    "Explain what patterns mean in everyday terms — do not recite test statistics. "
     "Interpret cryptic column names using dataset titles, source publishers, column labels, "
     "glossaries, measure context, and sample rows. Never invent statistics."
 )
@@ -178,54 +179,195 @@ def _dataset_titles(context: dict[str, Any]) -> list[str]:
     return [str(d.get("title") or "Dataset") for d in context.get("datasets") or []]
 
 
+def _column_labels_for(finding: dict[str, Any]) -> list[str]:
+    details = finding.get("details") or {}
+    labels = details.get("column_labels")
+    if isinstance(labels, list) and labels:
+        return [str(label) for label in labels]
+    columns = finding.get("columns") or []
+    return [str(col) for col in columns]
+
+
+def _correlation_strength_label(abs_r: float) -> str:
+    if abs_r >= 0.7:
+        return "strong"
+    if abs_r >= 0.4:
+        return "moderate"
+    return "weak"
+
+
+def _correlation_verdict_line(
+    findings: list[dict[str, Any]],
+    *,
+    dataset_titles: list[str] | None = None,
+    join: dict[str, Any] | None = None,
+) -> str | None:
+    """One-line answer: are two datasets' main measures related?"""
+    titles = dataset_titles or []
+    if len(titles) < 2:
+        return None
+
+    if join and join.get("attempted") and not join.get("succeeded"):
+        warning = join.get("warning")
+        if warning:
+            return (
+                "Unable to compare — the datasets could not be joined, "
+                "so we could not test whether their measures relate."
+            )
+        return (
+            "Unable to compare — the datasets could not be joined, "
+            "so we could not test whether their measures relate."
+        )
+
+    ordered = sorted(findings, key=_summary_sort_key)
+    correlation = next(
+        (
+            f
+            for f in ordered
+            if f.get("type") == "spearman_correlation"
+            and (f.get("details") or {}).get("primary")
+        ),
+        None,
+    )
+    if correlation is None:
+        correlation = next((f for f in ordered if f.get("type") == "spearman_correlation"), None)
+
+    if correlation is None:
+        return "No — we did not find a meaningful link between the main measures in these two datasets."
+
+    cols = _column_labels_for(correlation)
+    if len(cols) < 2:
+        return "No — we did not find a meaningful link between the main measures in these two datasets."
+
+    a, b = cols[0], cols[1]
+    details = correlation.get("details") or {}
+    direction = details.get("direction", "positive")
+    r = correlation.get("value")
+    strength = "a"
+    if r is not None:
+        strength = f"a {_correlation_strength_label(abs(float(r)))}"
+    if direction == "negative":
+        return f"Yes — {a} and {b} tend to move in opposite directions ({strength} link)."
+    return f"Yes — {a} and {b} tend to move in the same direction ({strength} link)."
+
+
+def _plain_highlight(finding: dict[str, Any]) -> str | None:
+    """Explain a finding without statistical jargon."""
+    details = finding.get("details") or {}
+    ftype = finding.get("type")
+    cols = _column_labels_for(finding)
+
+    if ftype == "spearman_correlation" and len(cols) >= 2:
+        a, b = cols[0], cols[1]
+        direction = details.get("direction", "positive")
+        if direction == "negative":
+            return (
+                f"When {a} is higher, {b} tends to be lower — "
+                "the two measures pull in opposite directions."
+            )
+        return (
+            f"Higher {a} usually lines up with higher {b} — "
+            "the two measures tend to rise and fall together."
+        )
+
+    if ftype == "group_comparison" and len(cols) >= 2:
+        metric, group = cols[0], cols[1]
+        top = details.get("highest_group")
+        bottom = details.get("lowest_group")
+        if top is not None and bottom is not None:
+            return (
+                f"{metric} is not the same everywhere — {top} stands out as higher "
+                f"and {bottom} as lower when grouped by {group.lower()}."
+            )
+        return f"{metric} varies noticeably depending on {group.lower()}."
+
+    if ftype == "time_trend" and cols:
+        metric = cols[0]
+        direction = details.get("direction", "upward")
+        word = "climbed" if direction == "upward" else "fell"
+        return f"{metric} generally {word} over the period covered by this data."
+
+    if ftype == "chi_square" and len(cols) >= 2:
+        return (
+            f"Certain pairings of {cols[0].lower()} and {cols[1].lower()} "
+            "show up together more often than you'd expect by chance."
+        )
+
+    if ftype == "descriptive":
+        if details.get("top_values"):
+            return "Some categories dominate the dataset — a few values account for much of what you see."
+        if details.get("median") is not None:
+            return "A typical value sits in the middle of a wide spread — most rows are not identical."
+        return "This is a quick snapshot of the dataset's size and overall shape."
+
+    if ftype in ("kmeans_cluster", "dbscan_cluster"):
+        return "Rows naturally fall into a few groups that look similar on the numeric fields we measured."
+    if ftype in ("anomaly_top_rows", "lof_anomaly"):
+        return "A handful of rows look unusual compared with everything else in the sample."
+    if ftype == "pca_structure":
+        return "Much of the variation across numeric columns can be summed up along one main axis."
+
+    impact = details.get("impact")
+    if isinstance(impact, str) and impact.strip():
+        cleaned = re.sub(r"\s*\([^)]*(?:Spearman|p[\s=]|r[\s=])[^)]*\)", "", impact)
+        cleaned = re.sub(r"\bacross\s+[\d,]+\s+paired observations\.?", "", cleaned).strip()
+        if cleaned:
+            return cleaned.rstrip(".") + "."
+    title = finding.get("title")
+    return str(title).strip() if title else None
+
+
 def template_summary_blocks(
     findings: list[dict[str, Any]],
     *,
     user_intent: str | None = None,
     dataset_titles: list[str] | None = None,
+    join: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Structured fallback summary."""
+    titles = dataset_titles or []
     if not findings:
         return [
             {
                 "type": "paragraph",
                 "text": (
-                    "We did not find statistically significant patterns in this sample. "
+                    "We did not find clear patterns in this sample. "
                     "Try a dataset with more rows and varied numeric columns, such as NEH grant CSVs on data.gov."
                 ),
             }
         ]
 
     ordered = sorted(findings, key=_summary_sort_key)
-    primary = next((f for f in ordered if (f.get("details") or {}).get("primary")), None)
+
+    blocks: list[dict[str, Any]] = []
+    verdict = _correlation_verdict_line(ordered, dataset_titles=titles, join=join)
+    if verdict:
+        blocks.append({"type": "header", "text": verdict})
 
     intro_parts: list[str] = []
-    if primary and primary.get("type") == "spearman_correlation":
+    if len(titles) >= 2:
         intro_parts.append(
-            "The main result is how the two selected measures relate after joining the datasets."
+            f"We compared {titles[0]} and {titles[1]} to see what story the combined data tells."
         )
-    elif dataset_titles:
-        intro_parts.append(f"This summary covers {', '.join(dataset_titles[:2])}.")
+    elif titles:
+        intro_parts.append(f"This summary explains the main patterns in {titles[0]}.")
     if user_intent:
-        intro_parts.append(f"You asked about: {user_intent.strip()}")
+        intro_parts.append(f"You asked: {user_intent.strip()}")
     if not intro_parts:
-        intro_parts.append("Here are the main patterns from your analysis.")
+        intro_parts.append("Here is what stands out from your analysis.")
 
-    impacts = [
-        (f.get("details") or {}).get("impact") or f.get("title")
-        for f in ordered[:5]
-        if (f.get("details") or {}).get("impact") or f.get("title")
-    ]
+    highlights = [_plain_highlight(f) for f in ordered[:5]]
+    highlights = [h for h in highlights if h]
 
-    blocks: list[dict[str, Any]] = [{"type": "paragraph", "text": " ".join(intro_parts)}]
-    if impacts:
-        blocks.append({"type": "list", "items": impacts[:5]})
+    blocks.append({"type": "paragraph", "text": " ".join(intro_parts)})
+    if highlights:
+        blocks.append({"type": "list", "items": highlights[:5]})
     blocks.append(
         {
             "type": "paragraph",
             "text": (
-                "These points come directly from computed statistical tests. "
-                "Correlation and group differences do not prove causation."
+                "These patterns come from automated checks on your data. "
+                "A link between two measures does not prove one causes the other."
             ),
         }
     )
@@ -237,16 +379,24 @@ def template_summary(
     *,
     user_intent: str | None = None,
     dataset_titles: list[str] | None = None,
+    join: dict[str, Any] | None = None,
 ) -> str:
     return blocks_to_plain_text(
-        template_summary_blocks(findings, user_intent=user_intent, dataset_titles=dataset_titles)
+        template_summary_blocks(
+            findings,
+            user_intent=user_intent,
+            dataset_titles=dataset_titles,
+            join=join,
+        )
     )
 
 
 def blocks_to_plain_text(blocks: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for block in blocks:
-        if block.get("type") == "paragraph" and block.get("text"):
+        if block.get("type") == "header" and block.get("text"):
+            parts.append(str(block["text"]))
+        elif block.get("type") == "paragraph" and block.get("text"):
             parts.append(str(block["text"]))
         elif block.get("type") == "list":
             items = block.get("items") or []
@@ -274,28 +424,39 @@ The user asked this research question — address it directly in the intro when 
         "featured_finding_ids": context.get("display_finding_ids") or [],
     }
 
+    num_datasets = len(context.get("datasets") or [])
+    correlation_field = ""
+    correlation_rules = ""
+    if num_datasets >= 2:
+        correlation_field = """
+  "correlation_verdict": "REQUIRED — one sentence. Start with Yes, No, or Unable. State plainly whether the two datasets' main measures are related; if yes, say how (move together, opposite directions, weak/moderate/strong link). No r-values, p-values, or test names.","""
+        correlation_rules = """
+- correlation_verdict is REQUIRED when two datasets are present. Put the yes/no relationship answer there — do not bury it in intro or highlights.
+- After correlation_verdict, intro and highlights should explain what the patterns mean in real-world terms, not restate test outcomes."""
+
     return f"""Write key findings for a non-technical audience based ONLY on the analysis context below.
 {intent_block}
 Return ONLY valid JSON (no markdown fences, no commentary) in exactly this shape:
-{{
-  "intro": "1-2 short sentences: what was analyzed, the headline pattern, and (if provided) how it relates to the user's question",
+{{{correlation_field}
+  "intro": "1-2 short sentences: what was analyzed and what the overall story is (if a user question was provided, tie back to it)",
   "highlights": [
     "One plain-language bullet per major finding (3 to 6 items)",
-    "Each bullet is one digestible sentence",
+    "Each bullet explains what the pattern means — not just that a test found something",
     "Lead with the strongest / featured findings; cover other important patterns when relevant"
   ],
-  "caveat": "One sentence: correlation/group differences are not proof of causation"
+  "caveat": "One sentence: a link between measures does not prove one causes the other"
 }}
 
 Rules:
-- Use plain language. Avoid jargon like p-value, Spearman, Kruskal, chi-square unless unavoidable.
+- Write for someone who does not know statistics. Explain what patterns mean in everyday language.
+- Do NOT quote r-values, p-values, sample sizes, or method names (Spearman, Kruskal, chi-square, etc.) in any field.
 - When column names are cryptic (e.g. value, amt, yr), infer readable names from dataset titles, sources, column labels, glossary, measure_context, and sample_rows — then write using those plain names.
-- If datasets were joined, mention what they were combined on and what that comparison means in plain terms.
+- If datasets were joined, explain what was compared and why that matters — not which SQL keys were used.
 - If both datasets are NYC Open Data, you may say so when relevant.
-- Do NOT invent numbers — only reuse figures explicitly present in the JSON below.
+- Do NOT invent numbers — prefer qualitative words (higher, lower, most, few, strong, weak) over digits.
 - Do NOT use markdown headers or titles.
 - highlights must be an array of strings, not a single paragraph.
-- Do not mention SQL, internal test names, or machine-learning algorithm names.
+- Do not mention SQL, internal test names, or machine-learning algorithm names.{correlation_rules}
 
 Analysis context JSON:
 {json.dumps(payload, indent=2, default=str)}"""
@@ -314,6 +475,10 @@ def _parse_summary_json(text: str) -> list[dict[str, Any]] | None:
         return None
 
     blocks: list[dict[str, Any]] = []
+    verdict = data.get("correlation_verdict")
+    if isinstance(verdict, str) and verdict.strip():
+        blocks.append({"type": "header", "text": verdict.strip()})
+
     intro = data.get("intro")
     if isinstance(intro, str) and intro.strip():
         blocks.append({"type": "paragraph", "text": intro.strip()})
@@ -337,7 +502,7 @@ def _parse_summary_json(text: str) -> list[dict[str, Any]] | None:
 def _blocks_to_validation_text(blocks: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for block in blocks:
-        if block.get("type") == "paragraph":
+        if block.get("type") in ("paragraph", "header"):
             parts.append(str(block.get("text") or ""))
         elif block.get("type") == "list":
             parts.extend(str(x) for x in block.get("items") or [])
@@ -423,17 +588,24 @@ def generate_ai_summary(
     display = _display_findings(context)
     titles = _dataset_titles(context)
     user_intent = context.get("user_intent")
+    join = context.get("join")
     validation_context = _context_validation_text(context)
 
     if not all_findings:
-        blocks = template_summary_blocks([], user_intent=user_intent, dataset_titles=titles)
+        blocks = template_summary_blocks(
+            [], user_intent=user_intent, dataset_titles=titles, join=join
+        )
         return blocks_to_plain_text(blocks), "template", blocks, None
 
     if not settings.anthropic_api_key:
-        blocks = template_summary_blocks(display, user_intent=user_intent, dataset_titles=titles)
+        blocks = template_summary_blocks(
+            display, user_intent=user_intent, dataset_titles=titles, join=join
+        )
         return blocks_to_plain_text(blocks), "template", blocks, "no_api_key"
     if not allow_ai:
-        blocks = template_summary_blocks(display, user_intent=user_intent, dataset_titles=titles)
+        blocks = template_summary_blocks(
+            display, user_intent=user_intent, dataset_titles=titles, join=join
+        )
         return blocks_to_plain_text(blocks), "template", blocks, "budget_exhausted"
 
     fallback_reason: str | None = "api_error"
@@ -468,7 +640,9 @@ def generate_ai_summary(
     except Exception:
         logger.exception("AI summary generation failed")
 
-    blocks = template_summary_blocks(display, user_intent=user_intent, dataset_titles=titles)
+    blocks = template_summary_blocks(
+        display, user_intent=user_intent, dataset_titles=titles, join=join
+    )
     return blocks_to_plain_text(blocks), "template", blocks, fallback_reason
 
 
