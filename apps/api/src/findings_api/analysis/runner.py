@@ -22,6 +22,7 @@ from findings_api.analysis.join import (
 )
 from findings_api.analysis.ml.clustering import run_ml_suite
 from findings_api.analysis.profile import profile_table
+from findings_api.models import CatalogResource
 from findings_api.analysis.labels import glossary_for_columns
 from findings_api.analysis.methods import summarize_methods_run
 from findings_api.analysis.narrative import enrich_findings
@@ -293,12 +294,14 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
             extra_contexts = (
                 joined_measure_contexts if table == "analysis_joined" else None
             )
+            catalog = db.get(CatalogResource, rid) if rid else None
             profile = profile_table(
                 conn,
                 table,
                 resource_id=rid,
                 title=title,
                 extra_measure_contexts=extra_contexts,
+                portal=catalog.portal if catalog else None,
             )
             profiles.append(profile)
 
@@ -519,9 +522,10 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     {
                         "title": p.title,
                         "n_rows": p.n_rows,
-                        "numeric_columns": p.numeric,
-                        "categorical_columns": p.categorical,
-                        "datetime_columns": p.datetime,
+                        "numeric_columns": p.analysis_numeric,
+                        "categorical_columns": p.analysis_categorical,
+                        "datetime_columns": p.analysis_datetime,
+                        "field_relevance": p.field_relevance,
                     }
                     for p in profiles
                 ],

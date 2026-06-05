@@ -118,9 +118,28 @@ def default_soql(*, limit: int | None = None) -> str:
     return f"SELECT * LIMIT {cap}"
 
 
-def scalar_field_names(columns: list[dict], *, max_names: int | None = None) -> list[str]:
-    """Flat scalar column names suitable for SoQL SELECT lists."""
-    names: list[str] = []
+def _socrata_column_kind(dtype: str) -> str:
+    if dtype in ("number", "money"):
+        return "numeric"
+    if dtype in ("calendar_date", "floating_timestamp"):
+        return "datetime"
+    return "categorical"
+
+
+def _rank_scalar_columns(columns: list[dict], *, portal: str | None = PORTAL_NYC) -> list[str]:
+    """Return scalar column names ordered by analytical relevance."""
+    from findings_api.analysis.field_relevance import _category_score, _is_coordinate_field, classify_field
+
+    scored: list[tuple[int, str]] = []
+    has_preferred_geo = False
+    for col in columns:
+        field = col.get("fieldName") or col.get("name")
+        if not field:
+            continue
+        kind = _socrata_column_kind((col.get("dataTypeName") or "text").lower())
+        if classify_field(field, kind=kind) == "geographic" and not _is_coordinate_field(field):
+            has_preferred_geo = True
+
     for col in columns:
         field = col.get("fieldName") or col.get("name")
         if not field or field.startswith(":"):
@@ -128,10 +147,34 @@ def scalar_field_names(columns: list[dict], *, max_names: int | None = None) -> 
         dtype = (col.get("dataTypeName") or "text").lower()
         if dtype in SKIP_DATA_TYPES:
             continue
-        if dtype in SCALAR_DATA_TYPES or dtype.startswith("text"):
-            names.append(field)
-            if max_names is not None and len(names) >= max_names:
-                break
+        if dtype not in SCALAR_DATA_TYPES and not dtype.startswith("text"):
+            continue
+        kind = _socrata_column_kind(dtype)
+        category = classify_field(field, kind=kind)
+        is_coord = _is_coordinate_field(field)
+        if is_coord and has_preferred_geo:
+            continue
+        score = _category_score(
+            category,
+            kind=kind,
+            has_preferred_geo=has_preferred_geo,
+            is_coordinate=is_coord,
+        )
+        if category in ("metadata", "administrative_identifier") and score < 40:
+            continue
+        scored.append((score, field))
+
+    if not scored:
+        return []
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [name for _, name in scored]
+
+
+def scalar_field_names(columns: list[dict], *, max_names: int | None = None) -> list[str]:
+    """Flat scalar column names suitable for SoQL SELECT lists."""
+    names = _rank_scalar_columns(columns)
+    if max_names is not None:
+        return names[:max_names]
     return names
 
 

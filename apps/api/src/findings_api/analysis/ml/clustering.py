@@ -339,7 +339,7 @@ def run_ml_suite(
             runner,
             conn,
             profile.table,
-            profile.numeric,
+            profile.analysis_numeric,
             resource_id=profile.resource_id,
             dataset_title=profile.title,
             n_rows=profile.n_rows,

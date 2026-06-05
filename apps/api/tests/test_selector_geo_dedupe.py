@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from findings_api.analysis.selector import _dedupe_geo_columns, plans_for_table
+from findings_api.analysis.field_relevance import dedupe_geo_columns
+from findings_api.analysis.selector import plans_for_table
 from findings_api.analysis.types import ColumnProfile, TableProfile
 
 
 def test_dedupe_prefers_name_over_code():
-    assert _dedupe_geo_columns(["country", "countryiso3code", "region"]) == ["country", "region"]
-    assert _dedupe_geo_columns(["Country", "Country code"]) == ["Country"]
-    assert _dedupe_geo_columns(["state_name", "state_code", "sector"]) == ["state_name", "sector"]
+    assert dedupe_geo_columns(["country", "countryiso3code", "region"]) == ["country", "region"]
+    assert dedupe_geo_columns(["Country", "Country code"]) == ["Country"]
+    assert dedupe_geo_columns(["state_name", "state_code", "sector"]) == ["state_name", "sector"]
 
 
 def test_dedupe_keeps_code_when_name_absent():
-    assert _dedupe_geo_columns(["countryiso3code"]) == ["countryiso3code"]
+    assert dedupe_geo_columns(["countryiso3code"]) == ["countryiso3code"]
 
 
 def _col(name: str, kind: str, nunique: int) -> ColumnProfile:

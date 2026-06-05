@@ -110,6 +110,12 @@ def _dataset_entry(
         "is_nyc_open_data": portal == "nyc_open_data",
         "n_rows_analyzed": profile.n_rows,
         "columns": _column_entries(profile),
+        "analysis_columns": {
+            "numeric": profile.analysis_numeric,
+            "categorical": profile.analysis_categorical,
+            "datetime": profile.analysis_datetime,
+        },
+        "field_relevance": profile.field_relevance,
         "facts": profile.facts,
         "sample_rows": sample_rows,
     }

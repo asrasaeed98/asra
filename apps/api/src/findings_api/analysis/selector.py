@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from findings_api.analysis.field_relevance import dedupe_geo_columns
 from findings_api.analysis.profile import (
     is_geo_column,
     is_panel_table,
@@ -21,40 +22,11 @@ class TestPlan:
     extra: dict | None = None
 
 
-# Ordered by preference: when several columns in a group are present, keep only
-# the first (the human-readable name) and drop redundant code/ISO variants so we
-# don't emit duplicate findings like "differs across Country" and
-# "differs across Country code".
-_GEO_PREFERENCE_GROUPS: list[list[str]] = [
-    ["country", "country_name", "countryiso3code", "country_code", "countrycode", "iso3", "iso"],
-    ["state", "state_name", "state_code", "state_abbr", "stusps"],
-    ["fips", "fips_code", "county_fips"],
-    ["geo_id", "geoid"],
-]
-
-
-def _dedupe_geo_columns(categorical: list[str]) -> list[str]:
-    """Drop redundant geo code columns when a preferred name column is present."""
-
-    def norm(name: str) -> str:
-        return name.lower().replace(" ", "").replace("_", "")
-
-    drop: set[str] = set()
-    for group in _GEO_PREFERENCE_GROUPS:
-        group_norm = [norm(g) for g in group]
-        present = [c for c in categorical if norm(c) in group_norm]
-        if len(present) <= 1:
-            continue
-        ranked = sorted(present, key=lambda c: group_norm.index(norm(c)))
-        drop.update(ranked[1:])
-    return [c for c in categorical if c not in drop]
-
-
 def plans_for_table(profile: TableProfile, *, joined: bool = False) -> list[TestPlan]:
     plans: list[TestPlan] = []
-    numeric = profile.numeric
-    categorical = _dedupe_geo_columns(profile.categorical)
-    datetime_cols = profile.datetime
+    numeric = profile.analysis_numeric
+    categorical = dedupe_geo_columns(profile.analysis_categorical)
+    datetime_cols = profile.analysis_datetime
 
     panel = is_panel_table(profile)
     cross_measure = joined and len(numeric) >= 2

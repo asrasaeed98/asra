@@ -70,14 +70,14 @@ def descriptive_findings(
             score=0.5,
             details={
                 "dataset_title": profile.title,
-                "numeric_columns": profile.numeric,
-                "categorical_columns": profile.categorical,
-                "datetime_columns": profile.datetime,
+                "numeric_columns": profile.analysis_numeric,
+                "categorical_columns": profile.analysis_categorical,
+                "datetime_columns": profile.analysis_datetime,
             },
         )
     )
 
-    for col in profile.numeric:
+    for col in profile.analysis_numeric:
         if not _is_metric_column(col, df[col]):
             continue
         nums = pd.to_numeric(df[col], errors="coerce").dropna()
@@ -121,7 +121,7 @@ def descriptive_findings(
         )
         break
 
-    for col in profile.categorical[:2]:
+    for col in profile.analysis_categorical[:2]:
         counts = df[col].astype(str).value_counts().head(5)
         if counts.empty:
             continue
@@ -311,21 +311,21 @@ def analysis_notes(
         if profile.n_rows < 20:
             notes.append(f"{profile.title} — small sample ({profile.n_rows} rows); many tests need more data.")
 
-        has_date = bool(profile.datetime) or any(
+        has_date = bool(profile.analysis_datetime) or any(
             c.name.lower() in ("date", "year") for c in profile.columns
         )
-        if len(profile.numeric) == 1 and has_date:
+        if len(profile.analysis_numeric) == 1 and has_date:
             if cross_ok:
                 continue
             notes.append(
                 f"{profile.title} — time-series shape (date + numeric value); "
                 "trend tests ran, correlation skipped (needs 2+ numeric fields)."
             )
-        elif len(profile.numeric) < 2:
+        elif len(profile.analysis_numeric) < 2:
             if cross_ok:
                 continue
             notes.append(
-                f"{profile.title} — only {len(profile.numeric)} numeric field(s); "
+                f"{profile.title} — only {len(profile.analysis_numeric)} numeric field(s); "
                 "correlation/regression tests were not applicable."
             )
 

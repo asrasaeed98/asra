@@ -34,6 +34,24 @@ _GEO_COLUMN_NAMES = frozenset(
         "geoid",
         "county_fips",
         "region",
+        # NYC Open Data
+        "borough",
+        "boro",
+        "boro_nm",
+        "borough_name",
+        "neighborhood",
+        "nta",
+        "nta_name",
+        "zip",
+        "zipcode",
+        "zip_code",
+        "incident_zip",
+        "community_board",
+        "community_district",
+        "commntyd",
+        "police_precinct",
+        "precinct",
+        "council_district",
     }
 )
 _METADATA_COLUMN_NAMES = frozenset(
@@ -211,7 +229,9 @@ def profile_table(
     resource_id: str,
     title: str,
     extra_measure_contexts: dict[str, dict[str, str | None]] | None = None,
+    portal: str | None = None,
 ) -> TableProfile:
+    from findings_api.analysis.field_relevance import evaluate_fields
     from findings_api.analysis.measure_semantics import (
         MEASURE_COLUMN_NAMES,
         resolve_measure_label,
@@ -219,9 +239,14 @@ def profile_table(
 
     df = read_table_frame(conn, table)
     profile = profile_dataframe(df, table=table, resource_id=resource_id, title=title)
+    relevance = evaluate_fields(profile.columns, portal=portal)
+    profile.field_relevance = relevance.to_dict()
+    if profile.facts is not None:
+        profile.facts["field_relevance"] = profile.field_relevance
+
     contexts: dict[str, dict[str, str | None]] = {}
     injected = extra_measure_contexts or {}
-    for col in profile.numeric:
+    for col in profile.analysis_numeric:
         if col in injected:
             # Pre-resolved before a join (when the source table was unambiguous).
             contexts[col] = injected[col]
@@ -253,24 +278,41 @@ def is_geo_column(name: str) -> bool:
 
 
 def preferred_geo_column(profile: TableProfile) -> str | None:
-    for pref in ("country", "countryiso3code", "state", "fips", "region"):
-        if pref in profile.categorical:
+    cats = profile.analysis_categorical
+    for pref in (
+        "borough",
+        "boro_nm",
+        "neighborhood",
+        "nta_name",
+        "zipcode",
+        "zip_code",
+        "community_district",
+        "precinct",
+        "country",
+        "countryiso3code",
+        "state",
+        "fips",
+        "region",
+    ):
+        if pref in cats:
             return pref
-    for name in profile.categorical:
+    for name in cats:
         if name.lower() in _GEO_COLUMN_NAMES:
             return name
     return None
 
 
 def preferred_measure_column(profile: TableProfile) -> str | None:
+    nums = profile.analysis_numeric
     for pref in ("value", "val"):
-        if pref in profile.numeric:
+        if pref in nums:
             return pref
-    return profile.numeric[0] if profile.numeric else None
+    return nums[0] if nums else None
 
 
 def preferred_time_column(profile: TableProfile) -> str | None:
+    dts = profile.analysis_datetime
     for pref in ("date", "year", "obs_date", "time_period"):
-        if pref in profile.datetime:
+        if pref in dts:
             return pref
-    return profile.datetime[0] if profile.datetime else None
+    return dts[0] if dts else None

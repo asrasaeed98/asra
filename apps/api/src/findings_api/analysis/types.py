@@ -22,6 +22,7 @@ class TableProfile:
     columns: list[ColumnProfile] = field(default_factory=list)
     measure_contexts: dict[str, dict[str, str | None]] = field(default_factory=dict)
     facts: dict[str, Any] = field(default_factory=dict)
+    field_relevance: dict[str, Any] | None = None
 
     def measure_context(self, column: str) -> dict[str, str | None] | None:
         return self.measure_contexts.get(column)
@@ -37,6 +38,25 @@ class TableProfile:
     @property
     def datetime(self) -> list[str]:
         return [c.name for c in self.columns if c.kind == "datetime"]
+
+    def _analysis_columns(self, kind: str) -> list[str]:
+        if self.field_relevance:
+            cols = (self.field_relevance.get("analysis_columns") or {}).get(kind)
+            if cols:
+                return list(cols)
+        return [c.name for c in self.columns if c.kind == kind]
+
+    @property
+    def analysis_numeric(self) -> list[str]:
+        return self._analysis_columns("numeric")
+
+    @property
+    def analysis_categorical(self) -> list[str]:
+        return self._analysis_columns("categorical")
+
+    @property
+    def analysis_datetime(self) -> list[str]:
+        return self._analysis_columns("datetime")
 
 
 @dataclass
