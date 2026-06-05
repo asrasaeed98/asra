@@ -75,6 +75,9 @@ function splitLongParagraph(text: string): SummaryBlock[] {
 /** @deprecated use formatSummaryBlocks */
 export function formatSummaryParagraphs(text: string): string[] {
   return formatSummaryBlocks(text)
-    .flatMap((b) => (b.type === "paragraph" ? [b.text] : b.items))
+    .flatMap((b) => {
+      if (b.type === "paragraph" || b.type === "header") return [b.text];
+      return b.items;
+    })
     .filter(Boolean);
 }
