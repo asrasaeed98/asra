@@ -83,9 +83,10 @@ class Settings(BaseSettings):
     # without triggering rate limits on unauthenticated calls.
     socrata_concurrent_chunks: int = 5
     download_large_row_hint: int = 50_000
-    # World Bank API accepts up to per_page=32500. A large page size collapses a
-    # 50k-row indicator from ~100 sequential requests to ~3, the dominant download cost.
+    # World Bank page size — start large; fall back 20k → 10k → 5k → 1k on 502/timeout.
     wb_download_per_page: int = 20000
+    wb_download_max_retries: int = 5
+    wb_download_backoff_base_sec: float = 1.0
     chat_max_questions: int = 5
     chat_max_tokens: int = 400
     chat_history_turns: int = 4

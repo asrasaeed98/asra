@@ -407,7 +407,9 @@ async def run_ingest(db: Session, session_id: str) -> None:
 
             async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
                 total_n = len(resources)
-                if total_n > 1:
+                # World Bank's public API is flaky under concurrent load — download sequentially.
+                wb_heavy = total_n > 1 and any(r.portal == "world_bank" for r in resources)
+                if total_n > 1 and not wb_heavy:
                     downloaded = await asyncio.gather(
                         *[
                             _download_resource(
@@ -421,15 +423,17 @@ async def run_ingest(db: Session, session_id: str) -> None:
                         ]
                     )
                 else:
-                    downloaded = [
-                        await _download_resource(
-                            0,
-                            resources[0],
-                            client=client,
-                            progress=download_progress,
-                            total_n=1,
+                    downloaded = []
+                    for idx, resource in enumerate(resources):
+                        downloaded.append(
+                            await _download_resource(
+                                idx,
+                                resource,
+                                client=client,
+                                progress=download_progress,
+                                total_n=total_n,
+                            )
                         )
-                    ]
 
             downloaded.sort(key=lambda item: item.idx)
             for item in downloaded:

@@ -233,6 +233,33 @@ def test_worldbank_ignores_per_page_in_catalog_url(monkeypatch):
     assert seen == ["500"]
 
 
+def test_worldbank_falls_back_to_smaller_per_page_on_page1_502(monkeypatch):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        per_page = request.url.params.get("per_page", "")
+        seen.append(per_page)
+        if per_page == "20000":
+            return httpx.Response(502, text="Bad Gateway")
+        return httpx.Response(200, json=[{"pages": 1, "page": 1, "total": 1}, [{"value": 1}]])
+
+    monkeypatch.setattr(settings, "wb_download_per_page", 20000)
+    monkeypatch.setattr(settings, "wb_download_max_retries", 1)
+    data = _run(
+        _with_client(
+            handler,
+            lambda c: fetch_worldbank_json(
+                "https://api.worldbank.org/v2/country/all/indicator/OK",
+                client=c,
+            ),
+        )
+    )
+    _meta, rows = json.loads(data)
+    assert len(rows) == 1
+    assert seen[0] == "20000"
+    assert "10000" in seen
+
+
 def test_worldbank_transient_5xx_retried_then_paginates():
     calls = {"n": 0}
 

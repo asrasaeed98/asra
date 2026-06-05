@@ -85,6 +85,8 @@ async def _get_with_retry(
     timeout: float = 120.0,
     headers: dict | None = None,
     on_heartbeat: HeartbeatCallback | None = None,
+    max_attempts: int | None = None,
+    backoff_base_sec: float | None = None,
 ) -> httpx.Response:
     """GET with retry/backoff on transient errors.
 
@@ -93,7 +95,8 @@ async def _get_with_retry(
     network level. Otherwise returns the final response (the caller decides
     how to handle its status code).
     """
-    attempts = max(1, settings.download_max_retries)
+    attempts = max(1, max_attempts or settings.download_max_retries)
+    backoff_base = backoff_base_sec if backoff_base_sec is not None else settings.download_backoff_base_sec
     last_exc: Exception | None = None
     resp: httpx.Response | None = None
 
@@ -113,7 +116,7 @@ async def _get_with_retry(
             if attempt < attempts:
                 if on_heartbeat:
                     on_heartbeat()
-                await asyncio.sleep(_backoff_seconds(attempt))
+                await asyncio.sleep(backoff_base * (2 ** (attempt - 1)))
                 continue
             break
 
@@ -127,7 +130,7 @@ async def _get_with_retry(
             )
             if on_heartbeat:
                 on_heartbeat()
-            await asyncio.sleep(_backoff_seconds(attempt))
+            await asyncio.sleep(backoff_base * (2 ** (attempt - 1)))
             continue
 
         return resp
@@ -258,6 +261,135 @@ async def fetch_resource_bytes(
             await client.aclose()
 
 
+_WB_PER_PAGE_FALLBACKS = (20_000, 10_000, 5_000, 1_000)
+
+
+def _wb_per_page_sizes() -> list[int]:
+    """Prefer configured page size, then fall back 20k → 10k → 5k → 1k on 502/timeout."""
+    primary = max(1, int(settings.wb_download_per_page))
+    sizes = [primary]
+    for value in _WB_PER_PAGE_FALLBACKS:
+        size = max(1, int(value))
+        if size < primary and size not in sizes:
+            sizes.append(size)
+    return sizes
+
+
+def _wb_url_params(url: str) -> dict[str, str]:
+    extra: dict[str, str] = {}
+    if "?" not in url:
+        return extra
+    for part in url.split("?", 1)[1].split("&"):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        if key.lower() in {"format", "page", "per_page"}:
+            continue
+        extra[key] = value
+    return extra
+
+
+async def _fetch_worldbank_pages(
+    client: httpx.AsyncClient,
+    base_url: str,
+    extra_params: dict[str, str],
+    *,
+    per_page: int,
+    on_progress: DownloadProgressCallback | None = None,
+    on_heartbeat: HeartbeatCallback | None = None,
+) -> bytes:
+    """Download one indicator using a fixed per_page size."""
+    params: dict[str, str | int] = {"format": "json", "per_page": per_page, **extra_params}
+    all_rows: list[dict] = []
+    meta: dict = {}
+    page = 1
+    row_target = settings.row_cap
+    max_pages = max(1, (row_target + per_page - 1) // per_page)
+    wb_timeout = max(settings.download_chunk_timeout_sec, 120.0)
+
+    while page <= max_pages:
+        params["page"] = page
+        try:
+            resp = await _get_with_retry(
+                client,
+                base_url,
+                source="World Bank",
+                params=params,
+                timeout=wb_timeout,
+                on_heartbeat=on_heartbeat,
+                max_attempts=settings.wb_download_max_retries,
+                backoff_base_sec=settings.wb_download_backoff_base_sec,
+            )
+        except DownloadError:
+            if all_rows:
+                logger.warning(
+                    "World Bank pagination stopped at page %s (network error); "
+                    "returning %s partial rows",
+                    page,
+                    len(all_rows),
+                )
+                break
+            raise
+
+        if resp.status_code >= 400:
+            if page == 1 or not all_rows:
+                raise DownloadError(_friendly_http_error("World Bank", resp.status_code))
+            logger.warning(
+                "World Bank pagination stopped at page %s (HTTP %s); "
+                "returning %s partial rows",
+                page,
+                resp.status_code,
+                len(all_rows),
+            )
+            break
+
+        try:
+            payload = resp.json()
+        except (json.JSONDecodeError, ValueError):
+            if all_rows:
+                logger.warning(
+                    "World Bank page %s returned invalid JSON; returning %s partial rows",
+                    page,
+                    len(all_rows),
+                )
+                break
+            raise DownloadError("World Bank returned an invalid response.")
+
+        if not isinstance(payload, list) or len(payload) < 2:
+            break
+        meta = payload[0] if isinstance(payload[0], dict) else {}
+        rows = payload[1] if isinstance(payload[1], list) else []
+        if not rows:
+            break
+        all_rows.extend(rows)
+        total_rows = int(meta.get("total") or len(all_rows))
+        row_target = min(settings.row_cap, total_rows)
+        total_pages = int(meta.get("pages") or 1)
+        if on_progress:
+            from findings_api.ingest.download_policy import download_progress_message
+
+            on_progress(download_progress_message(rows_done=len(all_rows), row_target=row_target))
+        if len(all_rows) >= row_target:
+            all_rows = all_rows[:row_target]
+            break
+        if page >= total_pages:
+            break
+        page += 1
+
+        encoded = json.dumps([meta, all_rows]).encode("utf-8")
+        if len(encoded) > settings.max_download_bytes:
+            logger.warning(
+                "World Bank download truncated at %s rows due to byte cap",
+                len(all_rows),
+            )
+            break
+
+    if not all_rows:
+        raise DownloadError("World Bank indicator returned no data rows")
+
+    return json.dumps([meta, all_rows]).encode("utf-8")
+
+
 async def fetch_worldbank_json(
     url: str,
     *,
@@ -267,122 +399,49 @@ async def fetch_worldbank_json(
 ) -> bytes:
     """Paginate World Bank indicator API until all rows are fetched (within caps).
 
-    Resilient pagination: each page is retried on transient failures. If a
-    page beyond the first fails after retries (or returns a 4xx, which the WB
-    API sometimes does on deep pages) we keep whatever rows we already have
-    and return partial data instead of failing the whole download. Only a
-    failure on page 1 (or an empty result) is treated as fatal.
+    Resilient pagination: each page is retried on transient failures. If the
+    first page still fails with 5xx/network errors, retries with smaller
+    per_page sizes before giving up.
     """
     owns_client = client is None
     if owns_client:
         client = httpx.AsyncClient(follow_redirects=True, trust_env=False)
 
     base_url = url.split("?")[0]
-    params: dict[str, str | int] = {
-        "format": "json",
-        "per_page": max(1, settings.wb_download_per_page),
-    }
-    if "?" in url:
-        for part in url.split("?", 1)[1].split("&"):
-            if "=" not in part:
-                continue
-            key, value = part.split("=", 1)
-            if key.lower() in {"format", "page", "per_page"}:
-                continue
-            params[key] = value
-
-    all_rows: list[dict] = []
-    meta: dict = {}
-    page = 1
-    row_target = settings.row_cap
-    max_pages = max(1, (row_target + settings.wb_download_per_page - 1) // settings.wb_download_per_page)
+    extra_params = _wb_url_params(url)
+    last_error: DownloadError | None = None
 
     try:
-        while page <= max_pages:
-            params["page"] = page
+        for idx, per_page in enumerate(_wb_per_page_sizes()):
             try:
-                resp = await _get_with_retry(
+                return await _fetch_worldbank_pages(
                     client,
                     base_url,
-                    source="World Bank",
-                    params=params,
+                    extra_params,
+                    per_page=per_page,
+                    on_progress=on_progress,
                     on_heartbeat=on_heartbeat,
                 )
-            except DownloadError:
-                if all_rows:
-                    logger.warning(
-                        "World Bank pagination stopped at page %s (network error); "
-                        "returning %s partial rows",
-                        page,
-                        len(all_rows),
-                    )
-                    break
-                raise
-
-            if resp.status_code >= 400:
-                if page == 1 or not all_rows:
-                    raise DownloadError(_friendly_http_error("World Bank", resp.status_code))
+            except DownloadError as exc:
+                last_error = exc
+                if idx + 1 >= len(_wb_per_page_sizes()):
+                    raise
                 logger.warning(
-                    "World Bank pagination stopped at page %s (HTTP %s); "
-                    "returning %s partial rows",
-                    page,
-                    resp.status_code,
-                    len(all_rows),
+                    "World Bank download failed at per_page=%s (%s); trying smaller pages",
+                    per_page,
+                    exc,
                 )
-                break
-
-            try:
-                payload = resp.json()
-            except (json.JSONDecodeError, ValueError):
-                if all_rows:
-                    logger.warning(
-                        "World Bank page %s returned invalid JSON; returning %s partial rows",
-                        page,
-                        len(all_rows),
-                    )
-                    break
-                raise DownloadError("World Bank returned an invalid response.")
-
-            if not isinstance(payload, list) or len(payload) < 2:
-                break
-            meta = payload[0] if isinstance(payload[0], dict) else {}
-            rows = payload[1] if isinstance(payload[1], list) else []
-            if not rows:
-                break
-            all_rows.extend(rows)
-            total_rows = int(meta.get("total") or len(all_rows))
-            row_target = min(settings.row_cap, total_rows)
-            total_pages = int(meta.get("pages") or 1)
-            if on_progress:
-                from findings_api.ingest.download_policy import download_progress_message
-
-                on_progress(
-                    download_progress_message(rows_done=len(all_rows), row_target=row_target)
-                )
-            if len(all_rows) >= row_target:
-                all_rows = all_rows[:row_target]
-                break
-            if page >= total_pages:
-                break
-            page += 1
-
-            encoded = json.dumps([meta, all_rows]).encode("utf-8")
-            if len(encoded) > settings.max_download_bytes:
-                logger.warning(
-                    "World Bank download truncated at %s rows due to byte cap",
-                    len(all_rows),
-                )
-                break
+                if on_heartbeat:
+                    on_heartbeat()
     except httpx.HTTPError as exc:
         raise DownloadError(redact_secrets(str(exc))) from exc
     finally:
         if owns_client:
             await client.aclose()
 
-    if not all_rows:
-        raise DownloadError("World Bank indicator returned no data rows")
-
-    return json.dumps([meta, all_rows]).encode("utf-8")
+    if last_error:
+        raise last_error
+    raise DownloadError("World Bank indicator returned no data rows")
 
 
 async def fetch_fred_json(url: str, *, client: httpx.AsyncClient | None = None) -> bytes:
