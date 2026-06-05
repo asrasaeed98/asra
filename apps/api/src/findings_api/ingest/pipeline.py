@@ -189,7 +189,8 @@ def _load_json(
         tmp_path = tmp.name
     try:
         conn.execute(
-            f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_json_auto(?)",
+            "CREATE OR REPLACE TABLE "
+            f"{table} AS SELECT * FROM read_json_auto(?, union_by_name=true, sample_size=-1)",
             [tmp_path],
         )
     finally:
