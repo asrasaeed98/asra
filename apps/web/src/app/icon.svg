@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Findings">
+  <rect width="32" height="32" rx="7" fill="#fffcf8"/>
+  <text
+    x="16"
+    y="22.5"
+    text-anchor="middle"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="17"
+    font-weight="600"
+    letter-spacing="-0.02em"
+  >
+    <tspan fill="#292524">F</tspan><tspan fill="#e879a9">.</tspan>
+  </text>
+</svg>
