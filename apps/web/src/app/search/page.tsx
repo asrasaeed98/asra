@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -208,7 +208,9 @@ function SearchContent() {
   const [topicsLoading, setTopicsLoading] = useState(true);
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>(() =>
     (params.get("ids") ?? "").split(",").filter(Boolean).slice(0, 2),
@@ -256,6 +258,7 @@ function SearchContent() {
 
   async function runSearch(query = q, source = portal, theme = topic) {
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
     try {
       const res = await searchDatasets(query, source || undefined, 1, theme || undefined);
@@ -279,6 +282,40 @@ function SearchContent() {
       setLoading(false);
     }
   }
+
+  const hasMore = data != null && data.results.length < data.total;
+
+  const loadMore = useCallback(async () => {
+    if (!data || loading || loadingMore || data.results.length >= data.total) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = data.page + 1;
+      const res = await searchDatasets(q, portal || undefined, nextPage, topic || undefined);
+      setData((prev) =>
+        prev
+          ? { ...res, results: [...prev.results, ...res.results] }
+          : res,
+      );
+    } catch {
+      // Keep existing results visible if a later page fails.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [data, loading, loadingMore, q, portal, topic]);
+
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadMore]);
 
   async function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -355,8 +392,12 @@ function SearchContent() {
     updateSearchUrl({ portal, topic, ids: [] });
   }
 
+  const showSelectionBar = selected.length > 0 && !showTopicBrowse;
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
+    <div
+      className={`mx-auto max-w-3xl px-4 py-8 sm:py-10 ${showSelectionBar ? "pb-28 sm:pb-24" : ""}`}
+    >
       <h1 className="text-xl font-semibold text-stone-800 sm:text-2xl">Search datasets</h1>
       <p className="mt-1 text-sm text-stone-600">
         Browse by theme or keyword. Results rank by match quality — best fits first.{" "}
@@ -461,28 +502,12 @@ function SearchContent() {
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="text-sm text-stone-500">
               Selected: {selected.length} / 2
-              {data && ` · ${data.total} result(s)`}
+              {data &&
+                ` · Showing ${data.results.length.toLocaleString()} of ${data.total.toLocaleString()}`}
               {topic ? ` · ${topicTitle(topics, topic)}` : ""}
               {portal ? ` · ${portalLabel(portal)} only` : ""}
             </p>
-            {selected.length > 0 && (
-              <button
-                type="button"
-                onClick={resetSelection}
-                className="text-sm font-medium text-pink-600 hover:text-pink-700"
-              >
-                Reset selection
-              </button>
-            )}
           </div>
-          {selected.length > 0 && (
-            <Link
-              href={`/review?ids=${selected.join(",")}`}
-              className="mt-4 inline-block rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-pink-700"
-            >
-              Review & analyze
-            </Link>
-          )}
           <ul className="mt-6 space-y-4">
             {data?.results?.map((item) => (
               <ResultCard
@@ -494,7 +519,44 @@ function SearchContent() {
               />
             ))}
           </ul>
+          {hasMore && (
+            <div ref={loadMoreRef} className="mt-6 flex justify-center py-4" aria-hidden>
+              {loadingMore && (
+                <p className="text-sm text-stone-500">Loading more datasets…</p>
+              )}
+            </div>
+          )}
         </>
+      )}
+
+      {showSelectionBar && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#e8ddd0] bg-[#fffcf8]/95 px-4 py-3 shadow-[0_-4px_24px_rgba(28,25,23,0.06)] backdrop-blur-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-stone-600">
+              <span className="font-medium text-stone-800">
+                {selected.length} of 2 selected
+              </span>
+              {selected.length < 2 && (
+                <span className="text-stone-500"> · pick one more or continue</span>
+              )}
+            </p>
+            <div className="flex shrink-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={resetSelection}
+                className="text-sm font-medium text-pink-600 hover:text-pink-700"
+              >
+                Reset
+              </button>
+              <Link
+                href={`/review?ids=${selected.join(",")}`}
+                className="rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-pink-200/50 transition hover:bg-pink-700"
+              >
+                Review & analyze
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

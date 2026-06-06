@@ -256,14 +256,16 @@ function ReviewContent() {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={runAnalysis}
-        disabled={starting}
-        className="mt-8 rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white hover:bg-pink-700 disabled:opacity-50"
-      >
-        {starting ? "Starting…" : "Run analysis"}
-      </button>
+      <div className="mt-8 flex justify-end">
+        <button
+          type="button"
+          onClick={runAnalysis}
+          disabled={starting}
+          className="rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-pink-200/50 hover:bg-pink-700 disabled:opacity-50"
+        >
+          {starting ? "Starting…" : "Run analysis"}
+        </button>
+      </div>
     </div>
   );
 }
