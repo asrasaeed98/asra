@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     anthropic_api_key: str = ""
-    anthropic_model_summary: str = "claude-opus-4-6"
+    anthropic_model_summary: str = "claude-haiku-4-5"
     anthropic_model_chat: str = "claude-sonnet-4-6"
     anthropic_model_measure: str = "claude-haiku-4-5"
     catalog_api_base: str = "https://catalog.data.gov"

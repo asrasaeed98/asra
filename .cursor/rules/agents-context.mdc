@@ -1,0 +1,17 @@
+---
+description: Read AGENTS.md first for ops context, prod health, sessions, and repo structure
+alwaysApply: true
+---
+
+# Agent onboarding
+
+At the start of every chat, **read `AGENTS.md` at the repo root** before scanning individual files.
+
+That file has:
+- Production and local URLs
+- Health-check commands
+- Logs (Railway, Vercel, local)
+- Live session APIs and admin snapshot scripts
+- Repo structure and common troubleshooting
+
+Use `docs/findings-ai/` only when you need deeper product or architecture detail.
