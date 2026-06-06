@@ -10,7 +10,8 @@ if [[ $# -lt 1 ]]; then
 fi
 
 LOCAL="http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002"
-ORIGINS="$LOCAL"
+PROD_CUSTOM="https://findings.site,https://www.findings.site"
+ORIGINS="$LOCAL,$PROD_CUSTOM"
 for url in "$@"; do
   url="${url%/}"
   ORIGINS="${ORIGINS},${url}"
