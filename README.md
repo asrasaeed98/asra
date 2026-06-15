@@ -23,9 +23,18 @@ Search curated open datasets (data.gov, World Bank, FRED, NYC Open Data), run au
 
 **Docs:** [docs/findings-ai/README.md](docs/findings-ai/README.md) · **Code:** `apps/web` · `apps/api`
 
-### Project 2 — coming soon
+### TokenTrim — same intent, fewer tokens *(in development)*
 
-A second project will live in this repo under its own `apps/` folder. Details TBD.
+**Token efficiency first.** Paste a bloated prompt, get three lean rewrites optimized to cut tokens without losing intent. Built for developers who pay per API call.
+
+| | |
+|---|---|
+| **Web** | Next.js 15, TypeScript, Tailwind |
+| **AI** | Anthropic Claude (server-side) |
+| **Value prop** | Token-efficient prompt compression |
+| **Status** | Early scaffold — not deployed |
+
+**Code:** `apps/tokentrim` · **Vision:** [docs/tokentrim/VISION.md](docs/tokentrim/VISION.md)
 
 ---
 
@@ -36,15 +45,16 @@ asra/
 ├── apps/
 │   ├── web/              # Findings — Next.js frontend
 │   ├── api/              # Findings — FastAPI backend
-│   └── <new-project>/    # Future apps go here
+│   └── tokentrim/        # TokenTrim — Next.js app
 ├── docs/
-│   └── findings-ai/      # Findings product & architecture docs
+│   ├── findings-ai/      # Findings product & architecture docs
+│   └── tokentrim/        # TokenTrim vision & product docs
 ├── scripts/              # Deploy, catalog sync, ops tooling
 ├── docker-compose.yml    # Local Postgres + Redis
 └── package.json          # Root npm scripts (dev:web, dev:api, test:api, …)
 ```
 
-Findings currently uses top-level `apps/web` and `apps/api`. New projects get their own folder under `apps/` so each app stays isolated without a disruptive rename of the existing deploy paths.
+Findings uses `apps/web` and `apps/api`. **TokenTrim** is a standalone Next.js app at `apps/tokentrim` (port 3001 locally).
 
 ---
 
@@ -69,6 +79,14 @@ npm run dev:web
 Catalog metadata syncs automatically on first API start when the DB is empty.
 
 **Tests:** `npm run test:api` (211 pytest cases)
+
+### TokenTrim (local)
+
+```bash
+# Needs ANTHROPIC_API_KEY in root .env
+npm run dev:tokentrim
+# → http://127.0.0.1:3001
+```
 
 ---
 

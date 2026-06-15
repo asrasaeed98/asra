@@ -4,6 +4,7 @@
   "scripts": {
     "dev:web": "npm run dev --prefix apps/web",
     "dev:api": "cd apps/api && .venv/bin/uvicorn findings_api.main:app --reload --port 8000",
+    "dev:tokentrim": "bash -c 'set -a && [ -f .env ] && . ./.env; set +a && npm run dev --prefix apps/tokentrim'",
     "sync:catalog": "curl -X POST http://localhost:8000/admin/sync",
     "sync:catalog:cli": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli sync",
     "sync:nyc": "cd apps/api && .venv/bin/python -m findings_api.catalog.cli sync-nyc",
