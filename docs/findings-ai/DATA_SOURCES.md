@@ -157,21 +157,21 @@ Previous limits were conservative for local dev:
 - **Cost:** Storage free; queries billed (1 TB/month free tier)
 - **Export path:** Query → temp table → export to GCS → download CSV — not a direct file URL
 - **License:** Per-dataset; must check each (e.g. NOAA, GitHub, CMS vary)
-- **Fit for FunFinds:** Poor for Phase 1 “click and analyze” — needs GCP credentials, export pipeline, and per-table legal review. Consider later as optional connector for users who bring their own GCP project.
+- **Fit for Findings:** Poor for Phase 1 “click and analyze” — needs GCP credentials, export pipeline, and per-table legal review. Consider later as optional connector for users who bring their own GCP project.
 
 ### Airtable
 
 - **Access:** Personal access token + base ID per dataset
 - **Stability:** Depends on base owner; no SLA for third-party bases
 - **License:** Base creator’s terms; not uniformly open
-- **Fit for FunFinds:** Not a public catalog source. Could support “paste your Airtable URL + token” in a future paid tier.
+- **Fit for Findings:** Not a public catalog source. Could support “paste your Airtable URL + token” in a future paid tier.
 
 ### Supabase
 
 - **Access:** Project URL + anon/service key; PostgREST API returns JSON
 - **Public examples:** Some tutorials expose read-only anon keys; no official public dataset program
 - **Stability:** Project-dependent; keys can be rotated/revoked
-- **Fit for FunFinds:** Only viable as a **curated allowlist** (e.g. 10 known public projects with env-stored keys). Not suitable for open-ended crawl.
+- **Fit for Findings:** Only viable as a **curated allowlist** (e.g. 10 known public projects with env-stored keys). Not suitable for open-ended crawl.
 
 ---
 

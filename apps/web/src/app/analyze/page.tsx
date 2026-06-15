@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FunFindsLoader } from "@/components/FunFindsLoader";
+import { FindingsLoader } from "@/components/FindingsLoader";
 import { formatSeconds, LoadingBlock } from "@/components/LoadingBlock";
 import { getSessionStatus, type SessionStatus } from "@/lib/api";
 import { formatLastUpdated, stuckWarning } from "@/lib/activity-status";
@@ -130,7 +130,7 @@ function AnalyzeContent() {
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
       <div className="mb-8 flex justify-center">
-        <FunFindsLoader message={phaseMessage} size="lg" />
+        <FindingsLoader message={phaseMessage} size="lg" />
       </div>
       <h1 className="text-center text-xl font-semibold text-stone-800">Analysis in progress</h1>
       <p className="mt-1 text-center text-sm text-stone-500">{timeHint}</p>

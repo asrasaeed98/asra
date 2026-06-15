@@ -1,4 +1,4 @@
-# FunFinds — agent handoff (May 2026)
+# Findings — agent handoff (May 2026)
 
 Short “start here” for the next agent or session. Full planning docs remain in `docs/findings-ai/`.
 
@@ -10,7 +10,7 @@ Short “start here” for the next agent or session. Full planning docs remain 
 | Latest work | **May 29 session (uncommitted):** analysis output quality, guided paths (Slice 12a), explore UI polish |
 | Prior commits | `ba0a917` chat/budget/facts · `ba06814` analysis/join/ML · `39cadda` catalog |
 | Working tree | **Dirty** — API + web + docs changes from May 29; not yet committed |
-| App name | **FunFinds** (`NEXT_PUBLIC_APP_NAME=FunFinds`) |
+| App name | **Findings** (`NEXT_PUBLIC_APP_NAME=Findings`) |
 | Tests | `104 passed` in `apps/api` (includes `test_guided*.py`, `test_ranker_joined.py`) |
 
 ## Start local dev

@@ -2,7 +2,7 @@
 
 **Read this file first** before exploring the repo. It covers production health, structure, logs, sessions, and the commands agents use most often.
 
-Product: **Findings** (public-data search → analysis → results + grounded chat). Docs folder `docs/findings-ai/` still uses legacy name **FunFinds** in places.
+Product: **Findings** (public-data search → analysis → results + grounded chat). Docs live in `docs/findings-ai/`.
 
 ---
 

@@ -1,10 +1,10 @@
-# FunFinds — UI design decisions
+# Findings — UI design decisions
 
 ## Principles
 
 1. **Simple and effective** — one primary action per screen; minimal chrome.
 2. **Warm and calm** — **beige/cream** surfaces; **pink** only as accent (not dominant).
-3. **Feedback everywhere** — FunFinds loader on async waits.
+3. **Feedback everywhere** — Findings loader on async waits.
 
 ## Color palette
 
@@ -50,8 +50,8 @@
 
 ## Loading
 
-- `FunFindsLoader` — mascot uses cream/pink (not all-pink blob on pink bg)
-- Optional `public/funfinds-loader.gif`
+- `FindingsLoader` — mascot uses cream/pink (not all-pink blob on pink bg)
+- Optional `public/findings-loader.gif`
 
 ## Accessibility
 

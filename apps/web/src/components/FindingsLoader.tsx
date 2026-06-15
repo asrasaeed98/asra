@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-type FunFindsLoaderProps = {
+type FindingsLoaderProps = {
   message?: string;
   size?: "sm" | "md" | "lg";
   className?: string;
@@ -11,16 +11,16 @@ type FunFindsLoaderProps = {
 
 const sizes = { sm: 48, md: 80, lg: 120 };
 
-export function FunFindsLoader({
+export function FindingsLoader({
   message = "Working on it…",
   size = "md",
   className = "",
-}: FunFindsLoaderProps) {
+}: FindingsLoaderProps) {
   const [useGif, setUseGif] = useState(false);
   const px = sizes[size];
 
   useEffect(() => {
-    fetch("/funfinds-loader.gif", { method: "HEAD" })
+    fetch("/findings-loader.gif", { method: "HEAD" })
       .then((r) => setUseGif(r.ok))
       .catch(() => setUseGif(false));
   }, []);
@@ -33,7 +33,7 @@ export function FunFindsLoader({
     >
       {useGif ? (
         <Image
-          src="/funfinds-loader.gif"
+          src="/findings-loader.gif"
           alt=""
           width={px}
           height={px}

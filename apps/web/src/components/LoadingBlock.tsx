@@ -1,4 +1,4 @@
-import { FunFindsLoader } from "./FunFindsLoader";
+import { FindingsLoader } from "./FindingsLoader";
 
 type LoadingBlockProps = {
   message?: string;
@@ -23,7 +23,7 @@ export function LoadingBlock({
     <div
       className={`flex ${minHeight} flex-col items-center justify-center rounded-2xl border border-[#e8ddd0] bg-[#faf8f5]/90 px-6 py-8 backdrop-blur-sm`}
     >
-      <FunFindsLoader message={message} size="md" />
+      <FindingsLoader message={message} size="md" />
       {showBar && (
         <div className="mt-6 w-full max-w-xs">
           <div className="h-2 overflow-hidden rounded-full bg-[#e8ddd0]">
