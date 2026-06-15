@@ -20,7 +20,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "TokenTrim",
   description:
-    "Same intent, fewer tokens. Three lean prompt rewrites — cut API cost without losing meaning.",
+    "Leaner prompts, lower token cost. Three rewrites that cut tokens without losing meaning.",
 };
 
 export default function RootLayout({
@@ -39,7 +39,7 @@ export default function RootLayout({
               <p className="text-lg font-semibold tracking-tight text-stone-800">
                 TokenTrim<span className="text-violet-600">.</span>
               </p>
-              <p className="text-xs text-stone-500">Same intent. Fewer tokens.</p>
+              <p className="text-xs text-stone-500">Leaner prompts, lower token cost</p>
             </div>
             <a
               href="https://github.com/asrasaeed98/asra"

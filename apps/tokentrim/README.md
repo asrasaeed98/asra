@@ -1,6 +1,6 @@
 # TokenTrim
 
-> **Same intent. Fewer tokens.**  
+> **Leaner prompts, lower token cost.**  
 > **Status:** Early scaffold. See [docs/tokentrim/VISION.md](../../docs/tokentrim/VISION.md).
 
 ## Intent

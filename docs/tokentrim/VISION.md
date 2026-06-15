@@ -4,7 +4,7 @@
 
 ## One-liner
 
-**Same intent. Fewer tokens.** Paste a bloated prompt, get three lean rewrites, pick the one that cuts your API bill.
+**Leaner prompts, lower token cost.** Paste a bloated prompt, get three lean rewrites, pick the one that cuts your API bill.
 
 ## North star
 
@@ -33,7 +33,7 @@ Each variant explains **why it's shorter** so users learn lean writing.
 **Developers & builders** who pay per token — API users, agent builders, production prompt workflows.
 
 **Messages:**
-1. *Same intent. Fewer tokens.* (hero)
+1. *Leaner prompts, lower token cost.* (hero)
 2. *Three lean rewrites. Copy. Ship.* (mechanic)
 3. *Lower API bills without dumbing down your intent.* (proof)
 
@@ -46,7 +46,7 @@ Each variant explains **why it's shorter** so users learn lean writing.
 | | |
 |---|---|
 | **Name** | TokenTrim |
-| **Tagline** | Same intent. Fewer tokens. |
+| **Tagline** | Leaner prompts, lower token cost |
 | **Domain** | TBD (tokentrim.com, tokentrim.app, etc.) |
 
 ---

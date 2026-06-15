@@ -104,10 +104,10 @@ export default function HomePage() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-stone-800 sm:text-3xl">
-          Same intent. Fewer tokens.
+          Leaner prompts, lower token cost
         </h1>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-stone-600">
-          Paste a bloated prompt. Get three lean rewrites — each optimized to cut tokens while
+          Paste a bloated prompt. Get three lean rewrites, each optimized to cut tokens while
           keeping your meaning. Built for people who pay per API call.
         </p>
       </div>

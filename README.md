@@ -39,7 +39,7 @@ Search curated open datasets (data.gov, World Bank, FRED, NYC Open Data), run au
 
 ---
 
-## TokenTrim — same intent, fewer tokens *(in development)*
+## TokenTrim — leaner prompts, lower token cost *(in development)*
 
 Token-efficient prompt compression for developers who pay per API call. Paste a bloated prompt → get three lean rewrites (Concise · Structured · Context-aware).
 
