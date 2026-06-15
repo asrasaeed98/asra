@@ -1,8 +1,8 @@
-# asra
+# Asra's Projects
 
 Monorepo for apps and experiments.
 
-## Findings (Phase 1)
+## (1) Findings
 
 **Findings** — search curated public datasets, run trustworthy analysis, and explore results with visuals, an AI summary, and grounded chat.
 
