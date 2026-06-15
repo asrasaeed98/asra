@@ -2,7 +2,7 @@
 
 I'm a builder at heart. I enjoy building fun projects in my free time, experimenting with ideas, trying new tech, and learning as I go. This repo is where those experiments live: real apps, shipped to production, with room to keep tinkering.
 
-**[LinkedIn](https://www.linkedin.com/in/asrasaeed/)** · **[GitHub](https://github.com/asrasaeed98)** · Open to **AI product / LLM application engineering** roles
+**[LinkedIn](https://www.linkedin.com/in/asrasaeed/)** · **[GitHub](https://github.com/asrasaeed98)** 
 
 ---
 
