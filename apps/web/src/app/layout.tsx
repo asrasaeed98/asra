@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { APP_NAME } from "@/lib/app-name";
 import { SiteFooter } from "@/components/SiteFooter";
+import { VisitTracker } from "@/components/VisitTracker";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -71,6 +72,7 @@ export default function RootLayout({
             </nav>
           </div>
         </header>
+        <VisitTracker />
         <main className="flex-1">{children}</main>
         <SiteFooter />
       </body>

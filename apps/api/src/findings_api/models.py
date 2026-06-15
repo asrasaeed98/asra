@@ -42,10 +42,24 @@ class CatalogResource(Base):
     )
 
 
+class AppVisit(Base):
+    """Anonymous page view — one row per navigation (visitor_id from browser localStorage)."""
+
+    __tablename__ = "app_visits"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    visitor_id: Mapped[str] = mapped_column(String(36), index=True)
+    path: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class AnalysisSession(Base):
     __tablename__ = "analysis_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    visitor_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="created", index=True)
     phase: Mapped[str] = mapped_column(String(32), default="pending")
     message: Mapped[str | None] = mapped_column(Text, nullable=True)

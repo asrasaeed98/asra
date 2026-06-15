@@ -91,6 +91,7 @@ class CreateSessionRequest(BaseModel):
     resource_ids: list[str] = Field(..., min_length=1, max_length=2)
     user_intent: str | None = None
     ml_enabled: bool = True
+    visitor_id: str | None = Field(default=None, max_length=36)
 
 
 class SessionDatasetPreview(BaseModel):

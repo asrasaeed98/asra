@@ -42,28 +42,33 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def _migrate_sqlite(engine) -> None:
-    """Add columns to existing SQLite DBs without Alembic."""
-    url = str(engine.url)
-    if not url.startswith("sqlite"):
-        return
+def _migrate_shared_columns(engine) -> None:
+    """Add columns/tables on existing DBs without Alembic."""
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
-    if "catalog_resources" not in insp.get_table_names():
-        return
-    existing = {col["name"] for col in insp.get_columns("catalog_resources")}
-    additions = {
-        "ingestible": "BOOLEAN NOT NULL DEFAULT 0",
-        "ingest_block_reason": "VARCHAR(255)",
-        "detected_format": "VARCHAR(32)",
-        "probed_at": "DATETIME",
-        "row_count_hint": "INTEGER",
-    }
+    tables = set(insp.get_table_names())
+    dialect = engine.dialect.name
+
     with engine.begin() as conn:
-        for name, typedef in additions.items():
-            if name not in existing:
-                conn.execute(text(f"ALTER TABLE catalog_resources ADD COLUMN {name} {typedef}"))
+        if "analysis_sessions" in tables:
+            existing = {col["name"] for col in insp.get_columns("analysis_sessions")}
+            if "visitor_id" not in existing:
+                typedef = "VARCHAR(36)" if dialect == "postgresql" else "VARCHAR(36)"
+                conn.execute(text(f"ALTER TABLE analysis_sessions ADD COLUMN visitor_id {typedef}"))
+
+        if dialect == "sqlite" and "catalog_resources" in tables:
+            existing = {col["name"] for col in insp.get_columns("catalog_resources")}
+            additions = {
+                "ingestible": "BOOLEAN NOT NULL DEFAULT 0",
+                "ingest_block_reason": "VARCHAR(255)",
+                "detected_format": "VARCHAR(32)",
+                "probed_at": "DATETIME",
+                "row_count_hint": "INTEGER",
+            }
+            for name, typedef in additions.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE catalog_resources ADD COLUMN {name} {typedef}"))
 
 
 def init_db() -> None:
@@ -71,4 +76,4 @@ def init_db() -> None:
 
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
-    _migrate_sqlite(engine)
+    _migrate_shared_columns(engine)

@@ -12,7 +12,7 @@ from findings_api.catalog.sync_all import run_full_sync
 from findings_api.config import settings
 from findings_api.db import get_session_factory, init_db
 from findings_api.models import CatalogResource
-from findings_api.routers import admin, datasets, guided, health, search, sessions
+from findings_api.routers import admin, datasets, guided, health, metrics, search, sessions
 from findings_api.session_recovery import recover_stale_sessions
 
 logger = logging.getLogger(__name__)
@@ -77,4 +77,5 @@ app.include_router(search.router)
 app.include_router(guided.router)
 app.include_router(datasets.router)
 app.include_router(sessions.router)
+app.include_router(metrics.router)
 app.include_router(admin.router)

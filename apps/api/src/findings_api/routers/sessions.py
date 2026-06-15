@@ -15,6 +15,7 @@ from findings_api.db import get_db, get_session_factory
 from findings_api.ingest.pipeline import apply_session_config, run_ingest
 from findings_api.models import AnalysisSession, CatalogResource
 from findings_api.routers.search import _to_result
+from findings_api.visitor_ids import normalize_visitor_id
 from findings_api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -92,6 +93,10 @@ def create_session(
         if not row:
             raise HTTPException(status_code=404, detail=f"Unknown resource: {rid}")
 
+    visitor_id = normalize_visitor_id(body.visitor_id)
+    if body.visitor_id and not visitor_id:
+        raise HTTPException(status_code=400, detail="visitor_id must be a UUID")
+
     session_id = str(uuid4())
     session = AnalysisSession(
         id=session_id,
@@ -100,6 +105,7 @@ def create_session(
         message="Ready to start — confirm settings and run analysis.",
         percent=0,
         resource_ids=body.resource_ids,
+        visitor_id=visitor_id,
         user_intent=body.user_intent,
         config={"ml_enabled": body.ml_enabled, "filters": {}, "join_keys": []},
     )

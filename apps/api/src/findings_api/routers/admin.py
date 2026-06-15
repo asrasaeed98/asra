@@ -10,6 +10,7 @@ from findings_api.catalog.probe_batch import run_probe_batch
 from findings_api.config import settings
 from findings_api.db import get_db
 from findings_api.models import AnalysisSession, ApiUsage, CatalogResource
+from findings_api.ops_dashboard import build_ops_dashboard
 from findings_api.schemas import SyncResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -162,6 +163,21 @@ def runs_snapshot(
         sessions=sessions,
         api_usage=api_usage,
     )
+
+
+@router.get("/ops/dashboard")
+def ops_dashboard(
+    limit: int = 200,
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _: None = Depends(_check_admin),
+):
+    """Rich ops metrics for Cursor Canvas and admin tooling."""
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 365")
+    return build_ops_dashboard(db, limit=limit, days=days)
 
 
 @router.get("/catalog/health", response_model=CatalogHealthResponse)

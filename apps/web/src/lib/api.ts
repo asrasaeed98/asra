@@ -308,11 +308,17 @@ export function getDatasetsBatch(resourceIds: string[]) {
   return apiGet<CatalogResult[]>(`/datasets/batch?${params}`);
 }
 
-export function createSession(resourceIds: string[], userIntent?: string, mlEnabled = true) {
+export function createSession(
+  resourceIds: string[],
+  userIntent?: string,
+  mlEnabled = true,
+  visitorId?: string | null,
+) {
   return apiPost<SessionResponse>("/sessions", {
     resource_ids: resourceIds,
     user_intent: userIntent || null,
     ml_enabled: mlEnabled,
+    visitor_id: visitorId || null,
   });
 }
 

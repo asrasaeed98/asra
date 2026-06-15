@@ -14,6 +14,7 @@ import {
   type CatalogResult,
   type JoinColumnPair,
 } from "@/lib/api";
+import { getVisitorId } from "@/lib/visitor";
 
 function samplingHint(rowHint: number | null | undefined) {
   if (rowHint == null) return "Row cap and 5% sample apply for large tables.";
@@ -81,7 +82,12 @@ function ReviewContent() {
     setStarting(true);
     setLoadError(null);
     try {
-      const created = await createSession(ids, intent.trim() || undefined, ml);
+      const created = await createSession(
+        ids,
+        intent.trim() || undefined,
+        ml,
+        getVisitorId(),
+      );
       await updateSession(created.id, {
         user_intent: intent.trim() || undefined,
         ml_enabled: ml,
