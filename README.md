@@ -1,38 +1,55 @@
 # Asra's Projects
 
-Personal monorepo for full-stack apps and experiments. Built and maintained by [Asra Saeed](https://github.com/asrasaeed98).
+I'm a builder at heart. I enjoy building fun projects in my free time, experimenting with ideas, trying new tech, and learning as I go. This repo is where those experiments live: real apps, shipped to production, with room to keep tinkering.
+
+**[LinkedIn](https://www.linkedin.com/in/asrasaeed/)** · **[GitHub](https://github.com/asrasaeed98)** · Open to **AI product / LLM application engineering** roles
 
 ---
 
-## Projects
-
-### Findings — public data → analysis → insights
+## Findings — public data → analysis → insights
 
 **[findings.site](https://www.findings.site)** · Live product
 
 Search curated open datasets (data.gov, World Bank, FRED, NYC Open Data), run automated statistical analysis, and explore results with charts, an AI summary, and grounded chat.
 
-| | |
-|---|---|
-| **Web** | Next.js 15, TypeScript, Tailwind |
-| **API** | Python 3.12, FastAPI |
-| **Data** | PostgreSQL (catalog), DuckDB (per-session analytics), Redis |
-| **AI** | Anthropic Claude (summary + chat, server-side only) |
+### AI architecture
+
+- **LLMs never compute metrics** — all numbers come from deterministic analysis (stats, ML, SQL on DuckDB).
+- **AI summary only rephrases validated findings** — post-checked against source results.
+- **Grounded chat** — answers route through SQL on session data or loaded finding records; out-of-scope questions get template refusals.
+- **Cost-aware model tiering** — Haiku for summaries, Sonnet for chat; monthly API budget cap in production.
+
+
+|           |                                                             |
+| --------- | ----------------------------------------------------------- |
+| **Web**   | Next.js 15, TypeScript, Tailwind                            |
+| **API**   | Python 3.12, FastAPI                                        |
+| **Data**  | PostgreSQL (catalog), DuckDB (per-session analytics), Redis |
+| **AI**    | Anthropic Claude (server-side only)                         |
+| **Tests** | 211 pytest cases                                            |
+
 
 **User flow:** Search → Review → Analyze → Results
 
+*Home — search public datasets and start an analysis*
+
+*Results — AI-generated summary (labeled) and grounded Q&A over session data*
+
 **Docs:** [docs/findings-ai/README.md](docs/findings-ai/README.md) · **Code:** `apps/web` · `apps/api`
 
-### TokenTrim — same intent, fewer tokens *(in development)*
+---
 
-**Token efficiency first.** Paste a bloated prompt, get three lean rewrites optimized to cut tokens without losing intent. Built for developers who pay per API call.
+## TokenTrim — same intent, fewer tokens *(in development)*
 
-| | |
-|---|---|
-| **Web** | Next.js 15, TypeScript, Tailwind |
-| **AI** | Anthropic Claude (server-side) |
-| **Value prop** | Token-efficient prompt compression |
-| **Status** | Early scaffold — not deployed |
+Token-efficient prompt compression for developers who pay per API call. Paste a bloated prompt → get three lean rewrites (Concise · Structured · Context-aware).
+
+
+|            |                                  |
+| ---------- | -------------------------------- |
+| **Web**    | Next.js 15, TypeScript, Tailwind |
+| **AI**     | Anthropic Claude (server-side)   |
+| **Status** | Early scaffold — not deployed    |
+
 
 **Code:** `apps/tokentrim` · **Vision:** [docs/tokentrim/VISION.md](docs/tokentrim/VISION.md)
 
@@ -45,16 +62,14 @@ asra/
 ├── apps/
 │   ├── web/              # Findings — Next.js frontend
 │   ├── api/              # Findings — FastAPI backend
-│   └── tokentrim/        # TokenTrim — Next.js app
+│   └── tokentrim/        # TokenTrim — Next.js app (WIP)
 ├── docs/
 │   ├── findings-ai/      # Findings product & architecture docs
-│   └── tokentrim/        # TokenTrim vision & product docs
+│   ├── tokentrim/        # TokenTrim vision
+│   └── screenshots/      # README screenshots
 ├── scripts/              # Deploy, catalog sync, ops tooling
-├── docker-compose.yml    # Local Postgres + Redis
-└── package.json          # Root npm scripts (dev:web, dev:api, test:api, …)
+└── package.json          # dev:web, dev:api, dev:tokentrim, test:api
 ```
-
-Findings uses `apps/web` and `apps/api`. **TokenTrim** is a standalone Next.js app at `apps/tokentrim` (port 3001 locally).
 
 ---
 
@@ -67,40 +82,31 @@ docker compose up -d
 cp .env.example .env
 # Set ANTHROPIC_API_KEY in .env (required for AI features)
 
-# Terminal 1 — API (http://127.0.0.1:8000)
-cd apps/api && python -m venv .venv && pip install -e ".[dev]"
-npm run dev:api
-
-# Terminal 2 — Web (http://127.0.0.1:3000)
-cd apps/web && npm install
-npm run dev:web
+npm run dev:api   # http://127.0.0.1:8000
+npm run dev:web   # http://127.0.0.1:3000
 ```
-
-Catalog metadata syncs automatically on first API start when the DB is empty.
-
-**Tests:** `npm run test:api` (211 pytest cases)
 
 ### TokenTrim (local)
 
 ```bash
-# Needs ANTHROPIC_API_KEY in root .env
-npm run dev:tokentrim
-# → http://127.0.0.1:3001
+npm run dev:tokentrim   # http://127.0.0.1:3001
 ```
 
 ---
 
 ## Deployment
 
-| Service | Host | URL |
-|---------|------|-----|
-| Web | Vercel | [findings.site](https://www.findings.site) |
-| API | Railway | [asra-production.up.railway.app](https://asra-production.up.railway.app) |
 
-Push to `main` auto-deploys both. See [docs/findings-ai/DEPLOY.md](docs/findings-ai/DEPLOY.md) for details.
+| Service      | Host    | URL                                                                      |
+| ------------ | ------- | ------------------------------------------------------------------------ |
+| Findings web | Vercel  | [findings.site](https://www.findings.site)                               |
+| Findings API | Railway | [asra-production.up.railway.app](https://asra-production.up.railway.app) |
+
+
+Push to `main` auto-deploys Findings. See [docs/findings-ai/DEPLOY.md](docs/findings-ai/DEPLOY.md).
 
 ---
 
 ## License
 
-Private portfolio code unless otherwise noted. Contact via GitHub for questions.
+Private portfolio code unless otherwise noted. Contact via [LinkedIn](https://www.linkedin.com/in/asrasaeed/) or GitHub.
