@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -200,7 +199,6 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     logger.info("Auto-selected join for analysis: %s", picked.label)
 
         table_meta = {table: (rid, title) for table, rid, title in tables}
-        target_table = tables[0][0]
         join_report = None
         joined_measure_contexts: dict[str, dict[str, str | None]] = {}
         if analysis_mode == "compare" and join_pairs:
@@ -248,12 +246,11 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                     left_renames=left_renames or None,
                     right_renames=right_renames or None,
                 )
-                target_table = "analysis_joined"
                 rid_a, title_a = table_meta[tables[0][0]]
                 rid_b, title_b = table_meta[tables[1][0]]
                 table_meta["analysis_joined"] = (f"{rid_a}+{rid_b}", f"{title_a} + {title_b}")
                 join_report = {
-                    "join_on": [{"left": l, "right": r} for l, r in join_pairs],
+                    "join_on": [{"left": left, "right": right} for left, right in join_pairs],
                     "join_key": join_pairs[0][0] if len(join_pairs) == 1 else None,
                     "matched_rows": matched,
                     "overlap_left_pct": round(overlap_left, 4),
@@ -262,7 +259,7 @@ async def run_analysis_pipeline(db: Session, session_id: str) -> None:
                 }
             else:
                 join_report = {
-                    "join_on": [{"left": l, "right": r} for l, r in join_pairs],
+                    "join_on": [{"left": left, "right": right} for left, right in join_pairs],
                     "join_key": join_pairs[0][0] if len(join_pairs) == 1 else None,
                     "matched_rows": matched,
                     "overlap_left_pct": round(overlap_left, 4),

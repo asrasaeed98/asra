@@ -1,6 +1,5 @@
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
 from findings_api.analysis.profile import profile_dataframe
-from findings_api.analysis.types import Finding
 import pandas as pd
 
 

@@ -21,7 +21,6 @@ def _wb_country_year(conn, table: str, indicator: str, value_fn, *, iso: bool = 
         if iso
         else f"CREATE TABLE {table} (country VARCHAR, date VARCHAR, indicator VARCHAR, value DOUBLE)"
     )
-    col = "countryiso3code" if iso else "country"
     conn.executemany(f"INSERT INTO {table} VALUES (?, ?, ?, ?)", rows)
 
 

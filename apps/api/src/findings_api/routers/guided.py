@@ -59,7 +59,7 @@ def _path_to_pair(path, db: Session) -> GuidedPathPair | None:
         description=path.description,
         user_intent=path.user_intent,
         resource_ids=list(path.resource_ids),
-        join_hint=[{"left": l, "right": r} for l, r in path.join_hint],
+        join_hint=[{"left": left, "right": right} for left, right in path.join_hint],
         why=path.why,
         datasets=[_enrich(rows[rid], quality=catalog_quality_score(rows[rid])) for rid in path.resource_ids],
     )

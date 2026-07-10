@@ -2,9 +2,6 @@ import duckdb
 import pandas as pd
 
 from findings_api.analysis.profile import (
-    is_panel_table,
-    preferred_geo_column,
-    preferred_measure_column,
     profile_table,
     read_table_frame,
 )

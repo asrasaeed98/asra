@@ -27,7 +27,7 @@ from findings_api.schemas import (
     SessionStatusResponse,
 )
 from findings_api.progress_ticker import ProgressTicker
-from findings_api.session_recovery import fail_stale_session, recover_stale_sessions
+from findings_api.session_recovery import fail_stale_session
 
 logger = logging.getLogger(__name__)
 

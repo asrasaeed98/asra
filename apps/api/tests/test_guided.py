@@ -1,6 +1,6 @@
 """Tests for curated guided paths and search quality ranking."""
 
-from findings_api.catalog.search_rank import catalog_quality_score, rank_catalog_rows
+from findings_api.catalog.search_rank import rank_catalog_rows
 from findings_api.guided.loader import load_guided_config, match_paths, path_by_id
 from findings_api.models import CatalogResource
 
