@@ -10,7 +10,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from findings_api.catalog.quality import apply_probe
-from findings_api.catalog.probe import ProbeResult, probe_url
+from findings_api.catalog.probe import probe_url
 from findings_api.config import settings
 from findings_api.ingest.download import _get_with_retry
 from findings_api.licensing import (

@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from findings_api import models  # noqa: F401 — register all tables
-from findings_api.db import Base, get_db, get_engine, get_session_factory
+from findings_api.db import Base, get_db, get_engine
 from findings_api.main import app
 from findings_api.models import CatalogResource
 

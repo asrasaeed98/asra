@@ -483,7 +483,6 @@ def _recommend_derived(
     has_preferred_geo: bool,
 ) -> list[DerivedDimension]:
     derived: list[DerivedDimension] = []
-    names = {c.name for c in columns}
     norms = {_norm(c.name): c.name for c in columns}
 
     coord_cols = [c.name for c in columns if _is_coordinate_field(c.name)]

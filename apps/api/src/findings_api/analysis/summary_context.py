@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
 from sqlalchemy.orm import Session
 
 from findings_api.analysis.measure_semantics import _sample_rows_for_prompt

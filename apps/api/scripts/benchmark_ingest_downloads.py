@@ -336,7 +336,9 @@ def print_report(results: list[CaseResult]) -> None:
         portal_results = by_portal[portal]
         passed = sum(1 for r in portal_results if r.ok)
         avg = sum(r.seconds for r in portal_results) / max(1, len(portal_results))
-        print(f"  {portal:<16} cases={len(portal_results)}  avg_wall={avg:.2f}s")
+        print(
+            f"  {portal:<16} cases={len(portal_results)}  passed={passed}  avg_wall={avg:.2f}s"
+        )
 
     dual = next((r for r in results if r.name == "wb-dual-parallel"), None)
     dual_seq = next((r for r in results if r.name == "wb-dual-sequential"), None)

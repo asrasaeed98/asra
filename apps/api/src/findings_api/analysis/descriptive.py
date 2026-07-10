@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from findings_api.analysis.labels import column_label, measure_label
+from findings_api.analysis.labels import measure_label
 from findings_api.analysis.measure_semantics import append_measure_note, format_measure_disclosure
 from findings_api.analysis.profile import (
     is_panel_table,

@@ -1,6 +1,5 @@
 from unittest.mock import AsyncMock, patch
 
-import pytest
 SAMPLE_CSV = b"state,value,year\n" + b"".join(
     f"ST{i % 50},{10 + i * 0.1:.1f},{2000 + i}\n".encode() for i in range(25)
 )

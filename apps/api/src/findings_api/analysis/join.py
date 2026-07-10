@@ -314,7 +314,6 @@ def _composite_candidates(
     right_map: dict[str, str],
 ) -> list[list[tuple[str, str]]]:
     """Build composite join candidates from high-value (geo, time) templates."""
-    by_low = {(l.lower(), r.lower()): (l, r) for l, r in singles}
     composites: list[list[tuple[str, str]]] = []
     seen: set[tuple[tuple[str, str], ...]] = set()
 
@@ -386,7 +385,7 @@ def _evaluate_candidate(
     left_keys = [p[0] for p in pairs]
     right_keys = [p[1] for p in pairs]
     display_keys = left_keys if left_keys == right_keys else [
-        f"{l}↔{r}" for l, r in pairs
+        f"{left}↔{right}" for left, right in pairs
     ]
     return JoinSuggestion(
         keys=display_keys,
