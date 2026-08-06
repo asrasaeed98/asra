@@ -15,3 +15,13 @@ export async function sendChat(message, conversationHistory) {
   }
   return res.json();
 }
+
+export async function fetchHealth() {
+  try {
+    const res = await fetch(`${API_URL}/health`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}

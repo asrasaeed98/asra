@@ -1,8 +1,7 @@
-"""NYC Tonight — FastAPI backend.
+"""NYC Tonight Agent Lab API.
 
-One primary endpoint: POST /chat. It runs the Claude tool-use loop
-(``claude_client.run_agent``) and returns a conversational reply plus
-structured result cards for the frontend.
+POST /chat runs the tool-use loop and returns reply text, result cards,
+and a structured ``trace`` for Lesson 1 notes and the What's happening panel.
 """
 
 from __future__ import annotations
@@ -23,12 +22,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nyc_tonight")
 
-from claude_client import run_agent  # noqa: E402  (import after env is loaded)
+from agent_loop import run_agent  # noqa: E402
+from providers import ollama_reachable, provider_info  # noqa: E402
+from tools import tool_sources_status  # noqa: E402
 
-app = FastAPI(title="NYC Tonight API", version="0.1.0")
+app = FastAPI(title="NYC Tonight Agent Lab", version="0.2.0")
 
-# CORS: allow the Vercel frontend origin(s). Comma-separated list in env, or
-# "*" for local/dev convenience.
 _origins_raw = os.getenv("CORS_ORIGINS", "*").strip()
 if _origins_raw == "*" or not _origins_raw:
     allow_origins = ["*"]
@@ -57,22 +56,27 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply_text: str
     results: list[dict] = Field(default_factory=list)
+    trace: dict = Field(default_factory=dict)
 
 
 @app.get("/")
 def root():
-    return {"service": "nyc-tonight-api", "status": "ok", "version": "0.1.0"}
+    return {"service": "nyc-tonight-agent-lab", "status": "ok", "version": "0.2.0"}
 
 
 @app.get("/health")
 def health():
+    info = provider_info()
     return {
         "status": "ok",
-        "service": "nyc-tonight-api",
-        "anthropic_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
-        "yelp_configured": bool(os.getenv("YELP_API_KEY")),
-        "google_places_configured": bool(os.getenv("GOOGLE_PLACES_API_KEY")),
-        "ticketmaster_configured": bool(os.getenv("TICKETMASTER_API_KEY")),
+        "service": "nyc-tonight-agent-lab",
+        "provider": info.name,
+        "model": info.model,
+        "provider_configured": info.configured,
+        "provider_detail": info.detail,
+        "ollama_reachable": ollama_reachable() if info.name == "ollama" else None,
+        "groq_configured": bool((os.getenv("GROQ_API_KEY") or "").strip()),
+        "tools": tool_sources_status(),
     }
 
 
@@ -84,4 +88,5 @@ def chat(req: ChatRequest):
     return ChatResponse(
         reply_text=outcome.get("reply_text", ""),
         results=outcome.get("results", []),
+        trace=outcome.get("trace") or {},
     )
