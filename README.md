@@ -35,24 +35,24 @@ Search curated open datasets (data.gov, World Bank, FRED, NYC Open Data), run au
 
 ---
 
-## NYC Tonight — AI concierge for New York *(currently building)*
+## Agent Lab — learn agents with NYC Tonight
 
-An agent I'm actively working on. Ask in plain English — *"cheap dinner in Chinatown around 7pm"* or *"something fun near Williamsburg tonight"* — and a Claude tool-use agent searches live data sources, reasons over the results, and replies with a short answer plus result cards (restaurants with a reservation deep-link, events with a ticket link).
+Interactive lab for learning how AI agents work. Chat with an NYC concierge agent while Lesson 1 notes explain the tool-use loop in plain language. Clone-and-run is free: Groq or Ollama for the LLM; NYC Open Data + Open-Meteo for tools (optional Ticketmaster for live events).
 
 ### Agent design
 
-- **Tool-use loop** — Claude decides which tools to call; the backend executes the real API calls and feeds results back until Claude returns a final reply.
-- **Real data tools** — `search_restaurants` (Yelp Fusion → Google Places fallback), `search_events` (Ticketmaster Discovery), `build_reservation_link` (OpenTable/Resy deep-link).
-- **Graceful degradation** — boots with no keys; each unavailable tool reports back so the agent still works with whatever data it can reach.
-- **Safe handoff** — reservations are deep-link only, never automated bookings (ToS). Stateless (no DB); short-term context is passed per page session.
+- **Tool-use loop** — the model chooses tools; the backend runs them and feeds results back until a final reply (with a structured `trace` for teaching).
+- **Free data tools** — `search_restaurants` (NYC Open Data), `get_weather` (Open-Meteo), `search_events` (Ticketmaster or fixtures), `build_reservation_link` (OpenTable/Resy deep-link).
+- **Learning UI** — notes left, chat center, “What’s happening” right; hamburger for lessons (Lesson 1 shipped).
+- **Safe handoff** — reservations are deep-link only. Stateless; short-term context in the browser.
 
-|              |                                              |
-| ------------ | -------------------------------------------- |
-| **Frontend** | React + Vite                                 |
-| **Backend**  | Python 3.12, FastAPI                         |
-| **AI**       | Anthropic Claude (tool-use loop)             |
-| **Data**     | Yelp Fusion, Google Places, Ticketmaster     |
-| **Status**   | In active development                        |
+|              |                                                          |
+| ------------ | -------------------------------------------------------- |
+| **Frontend** | React + Vite                                             |
+| **Backend**  | Python 3.12, FastAPI                                     |
+| **AI**       | Groq (free tier) or Ollama — tool-use loop               |
+| **Data**     | NYC Open Data, Open-Meteo, Ticketmaster (optional)       |
+| **Status**   | In active development                                    |
 
 **Code:** `nyc-tonight` · **Details:** [nyc-tonight/README.md](nyc-tonight/README.md)
 

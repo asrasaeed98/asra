@@ -1,6 +1,32 @@
 export function ResultCard({ result }) {
   if (result.type === "event") return <EventCard e={result} />;
+  if (result.type === "weather") return <WeatherCard w={result} />;
   return <RestaurantCard r={result} />;
+}
+
+function WeatherCard({ w }) {
+  return (
+    <div className="card">
+      <div className="card-body">
+        <div className="card-title-row">
+          <span className="card-title">{w.name || "NYC weather"}</span>
+          {w.temperature_f != null && (
+            <span className="rating">{Math.round(w.temperature_f)}°F</span>
+          )}
+        </div>
+        {w.condition && <div className="card-meta">{w.condition}</div>}
+        <div className="card-sub">
+          {[
+            w.wind_mph != null ? `Wind ${Math.round(w.wind_mph)} mph` : null,
+            w.humidity_pct != null ? `Humidity ${w.humidity_pct}%` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+        <div className="badge">Open-Meteo</div>
+      </div>
+    </div>
+  );
 }
 
 function Stars({ rating }) {
@@ -31,6 +57,7 @@ function RestaurantCard({ r }) {
         </div>
         {meta && <div className="card-meta">{meta}</div>}
         {r.address && <div className="card-sub">{r.address}</div>}
+        {r.grade && <div className="badge">Grade {r.grade}</div>}
         {r.is_closed && <div className="badge closed">Closed now</div>}
         <div className="card-actions">
           {r.reservation_url && (

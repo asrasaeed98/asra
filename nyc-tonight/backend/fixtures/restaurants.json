@@ -1,0 +1,138 @@
+[
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Nom Wah Tea Parlor",
+    "neighborhood": "Chinatown",
+    "boro": "Manhattan",
+    "cuisine": "Chinese",
+    "grade": "A",
+    "address": "13 Doyers St, Manhattan",
+    "categories": [
+      "Chinese",
+      "Dim Sum"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Great NY Noodletown",
+    "neighborhood": "Chinatown",
+    "boro": "Manhattan",
+    "cuisine": "Chinese",
+    "grade": "A",
+    "address": "28 Bowery, Manhattan",
+    "categories": [
+      "Chinese",
+      "Noodles"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Joe's Shanghai",
+    "neighborhood": "Chinatown",
+    "boro": "Manhattan",
+    "cuisine": "Chinese",
+    "grade": "A",
+    "address": "9 Pell St, Manhattan",
+    "categories": [
+      "Chinese",
+      "Soup Dumplings"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Lilia",
+    "neighborhood": "Williamsburg",
+    "boro": "Brooklyn",
+    "cuisine": "Italian",
+    "grade": "A",
+    "address": "567 Union Ave, Brooklyn",
+    "categories": [
+      "Italian"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Saint Julivert Fisherie",
+    "neighborhood": "Cobble Hill",
+    "boro": "Brooklyn",
+    "cuisine": "Seafood",
+    "grade": "A",
+    "address": "264 Clinton St, Brooklyn",
+    "categories": [
+      "Seafood"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Xi'an Famous Foods",
+    "neighborhood": "East Village",
+    "boro": "Manhattan",
+    "cuisine": "Chinese",
+    "grade": "A",
+    "address": "81 St Marks Pl, Manhattan",
+    "categories": [
+      "Chinese",
+      "Hand-pulled noodles"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Carbone",
+    "neighborhood": "Greenwich Village",
+    "boro": "Manhattan",
+    "cuisine": "Italian",
+    "grade": "A",
+    "address": "181 Thompson St, Manhattan",
+    "categories": [
+      "Italian"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Los Tacos No. 1",
+    "neighborhood": "Hell's Kitchen",
+    "boro": "Manhattan",
+    "cuisine": "Mexican",
+    "grade": "A",
+    "address": "229 W 43rd St, Manhattan",
+    "categories": [
+      "Mexican",
+      "Tacos"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Peter Luger Steak House",
+    "neighborhood": "Williamsburg",
+    "boro": "Brooklyn",
+    "cuisine": "Steakhouse",
+    "grade": "A",
+    "address": "178 Broadway, Brooklyn",
+    "categories": [
+      "Steakhouse"
+    ]
+  },
+  {
+    "type": "restaurant",
+    "source": "fixture",
+    "name": "Katz's Delicatessen",
+    "neighborhood": "Lower East Side",
+    "boro": "Manhattan",
+    "cuisine": "Delicatessen",
+    "grade": "A",
+    "address": "205 E Houston St, Manhattan",
+    "categories": [
+      "Delicatessen",
+      "Jewish"
+    ]
+  }
+]
