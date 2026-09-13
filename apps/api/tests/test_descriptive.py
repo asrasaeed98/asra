@@ -1,6 +1,7 @@
+import pandas as pd
+
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
 from findings_api.analysis.profile import profile_dataframe
-import pandas as pd
 
 
 def test_descriptive_findings_for_numeric_csv():

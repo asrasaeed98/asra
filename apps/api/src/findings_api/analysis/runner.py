@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,6 @@ from findings_api.analysis.ai_usage import is_over_budget, record_usage
 from findings_api.analysis.charts import charts_for_findings
 from findings_api.analysis.cross_measure import run_cross_measure_analysis
 from findings_api.analysis.descriptive import analysis_notes, descriptive_findings
-from findings_api.analysis.mode import resolve_analysis_mode, table_sets_for_mode
 from findings_api.analysis.join import (
     assess_join_on,
     auto_join_selection,
@@ -19,13 +18,18 @@ from findings_api.analysis.join import (
     normalize_join_on,
     suggest_joins,
 )
-from findings_api.analysis.ml.clustering import run_ml_suite
-from findings_api.analysis.profile import profile_table
-from findings_api.models import CatalogResource
 from findings_api.analysis.labels import glossary_for_columns
 from findings_api.analysis.methods import summarize_methods_run
+from findings_api.analysis.ml.clustering import run_ml_suite
+from findings_api.analysis.mode import resolve_analysis_mode, table_sets_for_mode
 from findings_api.analysis.narrative import enrich_findings
-from findings_api.analysis.ranker import DISPLAY_TOP, apply_ranking_context, rank_findings, select_display_findings
+from findings_api.analysis.profile import profile_table
+from findings_api.analysis.ranker import (
+    DISPLAY_TOP,
+    apply_ranking_context,
+    rank_findings,
+    select_display_findings,
+)
 from findings_api.analysis.selector import plans_for_table
 from findings_api.analysis.summary_context import build_summary_context
 from findings_api.analysis.tests.chi_square import run_chi_square
@@ -34,7 +38,7 @@ from findings_api.analysis.tests.group_comparison import run_group_comparison
 from findings_api.analysis.tests.trend import run_trend
 from findings_api.analysis.types import Finding
 from findings_api.ingest.duckdb_store import connect
-from findings_api.models import AnalysisSession
+from findings_api.models import AnalysisSession, CatalogResource
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,7 @@ def _set_progress(
     session.phase = phase
     session.message = message
     session.percent = percent
-    session.updated_at = datetime.now(timezone.utc)
+    session.updated_at = datetime.now(UTC)
     if status:
         session.status = status
     db.add(session)

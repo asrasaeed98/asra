@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy.orm import Session
 
-from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.probe import probe_url
+from findings_api.catalog.quality import apply_probe
+from findings_api.catalog.sync_limits import (
+    build_search_text,
+    prune_stale_portal_rows,
+    should_prune_after_sync,
+)
 from findings_api.config import settings
 from findings_api.licensing import (
     attribution_required,
@@ -17,7 +22,6 @@ from findings_api.licensing import (
     is_allowed,
     normalize_license,
 )
-from findings_api.catalog.sync_limits import build_search_text, prune_stale_portal_rows, should_prune_after_sync
 from findings_api.models import CatalogResource
 
 logger = logging.getLogger(__name__)
@@ -143,7 +147,7 @@ async def sync_ckan(session: Session, client: httpx.AsyncClient) -> int:
                             columns=None,
                             row_count_hint=None,
                             byte_size=res.get("size"),
-                            updated_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(UTC),
                             search_text=build_search_text(title, desc, org, tags),
                             ingestible=False,
                         )

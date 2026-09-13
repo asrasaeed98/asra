@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy.orm import Session
@@ -11,20 +11,20 @@ from sqlalchemy.orm import Session
 from findings_api.catalog.distributions import ranked_distributions
 from findings_api.catalog.probe import ProbeResult, probe_url
 from findings_api.catalog.quality import apply_probe
+from findings_api.catalog.sync_limits import (
+    PENDING_PROBE_REASON,
+    build_search_text,
+    max_indexed,
+    prune_stale_portal_rows,
+    should_probe,
+    should_prune_after_sync,
+)
 from findings_api.config import settings
 from findings_api.licensing import (
     attribution_required,
     default_attribution,
     is_allowed,
     normalize_license,
-)
-from findings_api.catalog.sync_limits import (
-    PENDING_PROBE_REASON,
-    build_search_text,
-    max_indexed,
-    prune_stale_portal_rows,
-    should_prune_after_sync,
-    should_probe,
 )
 from findings_api.models import CatalogResource
 
@@ -184,7 +184,7 @@ async def sync_datagov(session: Session, client: httpx.AsyncClient) -> int:
                         columns=None,
                         row_count_hint=None,
                         byte_size=None,
-                        updated_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(UTC),
                         search_text=build_search_text(title, desc, org, tags if isinstance(tags, list) else []),
                         ingestible=False,
                     )

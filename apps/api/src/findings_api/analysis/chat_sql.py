@@ -36,7 +36,7 @@ def list_queryable_tables(conn: duckdb.DuckDBPyConnection) -> list[str]:
     for name in names:
         if name.startswith("raw_"):
             continue
-        if name.startswith("analysis") or name.startswith("cross_measure"):
+        if name.startswith(("analysis", "cross_measure")):
             allowed.append(name)
     return sorted(allowed, key=lambda n: (0 if n.startswith(_PREFERRED_PREFIXES) else 1, n))
 

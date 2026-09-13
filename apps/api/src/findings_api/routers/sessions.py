@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -14,8 +14,8 @@ from findings_api.config import settings
 from findings_api.db import get_db, get_session_factory
 from findings_api.ingest.pipeline import apply_session_config, run_ingest
 from findings_api.models import AnalysisSession, CatalogResource
+from findings_api.progress_ticker import ProgressTicker
 from findings_api.routers.search import _to_result
-from findings_api.visitor_ids import normalize_visitor_id
 from findings_api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -26,8 +26,8 @@ from findings_api.schemas import (
     SessionResponse,
     SessionStatusResponse,
 )
-from findings_api.progress_ticker import ProgressTicker
 from findings_api.session_recovery import fail_stale_session
+from findings_api.visitor_ids import normalize_visitor_id
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def _schedule_full_run(background_tasks: BackgroundTasks, session_id: str) -> No
                 session.phase = "prepare"
                 session.message = "Preparing analysis…"
                 session.percent = 5
-                session.updated_at = datetime.now(timezone.utc)
+                session.updated_at = datetime.now(UTC)
                 db.add(session)
                 db.commit()
                 asyncio.run(run_analysis_pipeline(db, session_id))

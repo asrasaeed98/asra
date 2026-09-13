@@ -66,7 +66,7 @@ def test_cross_measure_filters_wb_aggregates():
     conn = duckdb.connect()
     rows = []
     for i in range(12):
-        rows.append(("C{:02d}".format(i), "2020", UNEMPLOYMENT, float(i)))
+        rows.append((f"C{i:02d}", "2020", UNEMPLOYMENT, float(i)))
     rows.append(("IBR", "2020", UNEMPLOYMENT, 99.0))
     rows.append(("IDA only", "2020", UNEMPLOYMENT, 88.0))
     conn.execute(
@@ -76,7 +76,7 @@ def test_cross_measure_filters_wb_aggregates():
 
     rows_r = []
     for i in range(12):
-        rows_r.append(("C{:02d}".format(i), "2020", WORKING_CAPITAL, float(100 - i)))
+        rows_r.append((f"C{i:02d}", "2020", WORKING_CAPITAL, float(100 - i)))
     conn.execute(
         "CREATE TABLE right_t (country VARCHAR, date VARCHAR, indicator VARCHAR, value DOUBLE)"
     )

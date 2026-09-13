@@ -1,6 +1,6 @@
 """Tests for catalog sync limit helpers."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,8 +13,8 @@ from findings_api.catalog.sync_limits import (
     clamp_str,
     max_indexed,
     prune_stale_portal_rows,
-    should_prune_after_sync,
     should_probe,
+    should_prune_after_sync,
 )
 from findings_api.config import settings
 from findings_api.db import Base
@@ -102,7 +102,7 @@ def _row(row_id: str, title: str, search_text: str, *, now: datetime) -> Catalog
 
 
 def test_prune_stale_portal_rows_keeps_unseen_prefixes(db_session):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db_session.add_all(
         [
             _row("datagov:a", "A", "a", now=now),

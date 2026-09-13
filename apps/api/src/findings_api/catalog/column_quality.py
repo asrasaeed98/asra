@@ -32,9 +32,7 @@ def is_generic_column(name: str) -> bool:
     if len(raw) == 1 and raw.lower() not in _SINGLE_LETTER_OK:
         return True
     # Purely numeric header (often a sign the CSV has no real header row)
-    if raw.isdigit():
-        return True
-    return False
+    return bool(raw.isdigit())
 
 
 def score_columns(columns: list[str]) -> tuple[bool, str, dict[str, int]]:
@@ -49,8 +47,8 @@ def score_columns(columns: list[str]) -> tuple[bool, str, dict[str, int]]:
     if len(meaningful) < 2:
         return (
             False,
-            f"only {len(meaningful)} meaningful column name(s) — headers look generic "
-            f"(e.g. column1, column08); need at least 2 descriptive fields",
+            (f"only {len(meaningful)} meaningful column name(s) — headers look generic "
+            f"(e.g. column1, column08); need at least 2 descriptive fields"),
             stats,
         )
 
@@ -58,8 +56,8 @@ def score_columns(columns: list[str]) -> tuple[bool, str, dict[str, int]]:
     if generic_ratio >= 0.5:
         return (
             False,
-            f"{generic} of {len(columns)} columns have generic names — "
-            "dataset likely lacks a proper header row",
+            (f"{generic} of {len(columns)} columns have generic names — "
+            "dataset likely lacks a proper header row"),
             stats,
         )
 

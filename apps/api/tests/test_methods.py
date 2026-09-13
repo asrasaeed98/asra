@@ -1,6 +1,7 @@
+import pandas as pd
+
 from findings_api.analysis.methods import summarize_methods_run
 from findings_api.analysis.profile import profile_dataframe
-import pandas as pd
 
 
 def test_summarize_methods_includes_stats_and_ml():

@@ -42,13 +42,13 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from findings_api.config import settings  # noqa: E402
-from findings_api.db import get_session_factory  # noqa: E402
-from findings_api.ingest import pipeline as pipeline_mod  # noqa: E402
-from findings_api.ingest import download as download_mod  # noqa: E402
-from findings_api.analysis import runner as runner_mod  # noqa: E402
-from findings_api.ingest.duckdb_store import connect, session_db_path  # noqa: E402
-from findings_api.models import AnalysisSession, CatalogResource  # noqa: E402
+from findings_api.analysis import runner as runner_mod
+from findings_api.config import settings
+from findings_api.db import get_session_factory
+from findings_api.ingest import download as download_mod
+from findings_api.ingest import pipeline as pipeline_mod
+from findings_api.ingest.duckdb_store import connect, session_db_path
+from findings_api.models import AnalysisSession, CatalogResource
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ class _Probe:
 PROBE = _Probe()
 
 
-async def _soda2_fetch(url, *, client=None, on_progress=None, on_heartbeat=None, title="", row_count_hint=None):  # noqa: ANN001
+async def _soda2_fetch(url, *, client=None, on_progress=None, on_heartbeat=None, title="", row_count_hint=None):
     """SODA2 GET fallback for NYC (SODA3 /query.json now requires an app token -> 403).
 
     Mirrors the product's chunked pagination so timings are representative of a
@@ -167,7 +167,7 @@ def _install_instrumentation(*, soda2: bool) -> None:
     orig_ml = runner_mod.run_ml_suite
     orig_ai = runner_mod.generate_ai_summary
 
-    async def timed_fetch(*args, **kwargs):  # noqa: ANN001
+    async def timed_fetch(*args, **kwargs):
         t0 = time.perf_counter()
         data, kind = await orig_fetch(*args, **kwargs)
         PROBE.downloads.append(
@@ -175,13 +175,13 @@ def _install_instrumentation(*, soda2: bool) -> None:
         )
         return data, kind
 
-    def timed_ml(*args, **kwargs):  # noqa: ANN001
+    def timed_ml(*args, **kwargs):
         t0 = time.perf_counter()
         out = orig_ml(*args, **kwargs)
         PROBE.ml_seconds += time.perf_counter() - t0
         return out
 
-    def timed_ai(*args, **kwargs):  # noqa: ANN001
+    def timed_ai(*args, **kwargs):
         t0 = time.perf_counter()
         out = orig_ai(*args, **kwargs)
         PROBE.ai_seconds += time.perf_counter() - t0

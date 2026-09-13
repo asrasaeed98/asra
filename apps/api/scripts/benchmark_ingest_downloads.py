@@ -23,11 +23,11 @@ import httpx
 # Allow running as `python scripts/benchmark_ingest_downloads.py`
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from findings_api.config import settings  # noqa: E402
-from findings_api.db import get_session_factory  # noqa: E402
-from findings_api.ingest.download import DownloadError, fetch_resource_bytes  # noqa: E402
-from findings_api.ingest.duckdb_store import connect, session_db_path  # noqa: E402
-from findings_api.models import AnalysisSession, CatalogResource  # noqa: E402
+from findings_api.config import settings
+from findings_api.db import get_session_factory
+from findings_api.ingest.download import DownloadError, fetch_resource_bytes
+from findings_api.ingest.duckdb_store import connect, session_db_path
+from findings_api.models import AnalysisSession, CatalogResource
 
 
 @dataclass(frozen=True)

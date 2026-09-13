@@ -149,7 +149,7 @@ def test_worldbank_partial_data_on_deep_page_400():
             ),
         )
     )
-    meta, rows = json.loads(data)
+    _meta, rows = json.loads(data)
     assert len(rows) == 2  # page 1 retained, deep-page 400 tolerated
 
 
@@ -280,6 +280,6 @@ def test_worldbank_transient_5xx_retried_then_paginates():
             ),
         )
     )
-    meta, rows = json.loads(data)
+    _meta, rows = json.loads(data)
     assert calls["n"] == 2
     assert len(rows) == 1

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -35,7 +35,7 @@ def record_visit(body: VisitRequest, db: Session = Depends(get_db)):
         AppVisit(
             visitor_id=visitor_id,
             path=path[:512],
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
     )
     db.commit()

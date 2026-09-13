@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy.orm import Session
@@ -111,7 +111,7 @@ _META_FETCH_CONCURRENCY = 8
 _META_FETCH_RETRIES = 3
 
 SKIP_VIEW_TYPES = frozenset({"blob", "file", "filter", "href", "chart", "map", "story"})
-_EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
+_EPOCH_MIN = datetime.min.replace(tzinfo=UTC)
 
 
 def _parse_iso_ts(value: str | None) -> datetime | None:
@@ -125,11 +125,11 @@ def _parse_iso_ts(value: str | None) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
-def _epoch_ts(value: int | float | str | None) -> datetime | None:
+def _epoch_ts(value: float | str | None) -> datetime | None:
     if value is None:
         return None
     try:
@@ -141,7 +141,7 @@ def _epoch_ts(value: int | float | str | None) -> datetime | None:
     if n > 1e12:
         n /= 1000.0
     try:
-        return datetime.fromtimestamp(n, tz=timezone.utc)
+        return datetime.fromtimestamp(n, tz=UTC)
     except (OSError, ValueError, OverflowError):
         return None
 
@@ -192,9 +192,7 @@ def _is_meaningful_view(meta: dict) -> bool:
     if not title or not str(title).strip():
         return False
     columns_meta = meta.get("columns") or []
-    if not build_scalar_soql(columns_meta):
-        return False
-    return True
+    return build_scalar_soql(columns_meta)
 
 
 async def _fetch_view_meta(client: httpx.AsyncClient, base: str, dataset_id: str) -> dict | None:
@@ -444,7 +442,7 @@ async def sync_nyc_open_data(session: Session, client: httpx.AsyncClient) -> int
             columns=[{"name": c.get("fieldName") or c.get("name")} for c in columns_meta[:50]],
             row_count_hint=row_count_hint,
             byte_size=None,
-            updated_at=dataset_updated_at if dataset_updated_at > _EPOCH_MIN else datetime.now(timezone.utc),
+            updated_at=dataset_updated_at if dataset_updated_at > _EPOCH_MIN else datetime.now(UTC),
             search_text=build_search_text(title, desc or "", org, tags + [dataset_id, "nyc", "new york"]),
             ingestible=False,
         )

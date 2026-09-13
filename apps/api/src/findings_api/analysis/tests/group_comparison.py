@@ -60,12 +60,12 @@ def run_group_comparison(
         return []
 
     if len(groups) == 2:
-        stat, p = stats.ttest_ind(groups[0], groups[1], equal_var=False)
+        _stat, p = stats.ttest_ind(groups[0], groups[1], equal_var=False)
         method = "welch_t"
         means = {labels[i]: float(pd.Series(groups[i]).mean()) for i in range(len(labels))}
         effect = abs(means[labels[0]] - means[labels[1]])
     else:
-        stat, p = stats.kruskal(*groups)
+        _stat, p = stats.kruskal(*groups)
         method = "kruskal"
         means = {labels[i]: float(pd.Series(groups[i]).mean()) for i in range(len(labels))}
         spread = max(means.values()) - min(means.values()) if means else 0.0

@@ -44,3 +44,11 @@ packages = ["src/findings_api"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+exclude = ["scripts"]
+
+[tool.ruff.lint]
+ignore = [
+    "B008",   # FastAPI Depends() in route signatures
+    "BLE001", # broad except in defensive ingest/analysis paths
+    "S112",   # try/except/continue in join candidate probing
+]

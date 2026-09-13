@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 import pandas as pd
 from sklearn.cluster import DBSCAN, KMeans

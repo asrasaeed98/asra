@@ -1,12 +1,12 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from findings_api.catalog.sync_all import run_full_sync
 from findings_api.catalog.probe_batch import run_probe_batch
+from findings_api.catalog.sync_all import run_full_sync
 from findings_api.config import settings
 from findings_api.db import get_db
 from findings_api.models import AnalysisSession, ApiUsage, CatalogResource
@@ -155,7 +155,7 @@ def runs_snapshot(
     ]
 
     return RunSnapshotResponse(
-        fetched_at=datetime.now(timezone.utc).isoformat(),
+        fetched_at=datetime.now(UTC).isoformat(),
         summary={
             "total_recent": len(sessions),
             "by_status": by_status,

@@ -7,7 +7,7 @@ Tracks estimated token cost per calendar month so we can stop calling the model
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,7 @@ def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
 
 
 def month_key(now: datetime | None = None) -> str:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     return now.strftime("%Y-%m")
 
 

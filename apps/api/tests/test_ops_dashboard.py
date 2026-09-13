@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from findings_api.db import Base, get_engine, get_session_factory
 from findings_api.models import AnalysisSession, ApiUsage, CatalogResource
@@ -12,8 +12,8 @@ def _session(db, **kwargs):
         "phase": "finalize",
         "resource_ids": ["wb:NY.GDP.MKTP.CD"],
         "user_intent": "Explore GDP",
-        "created_at": datetime.now(timezone.utc) - timedelta(days=1),
-        "updated_at": datetime.now(timezone.utc) - timedelta(days=1) + timedelta(seconds=42),
+        "created_at": datetime.now(UTC) - timedelta(days=1),
+        "updated_at": datetime.now(UTC) - timedelta(days=1) + timedelta(seconds=42),
     }
     defaults.update(kwargs)
     row = AnalysisSession(**defaults)

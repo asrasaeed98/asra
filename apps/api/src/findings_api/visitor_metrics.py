@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, text
@@ -18,8 +18,8 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _et_day(dt: datetime) -> str:
@@ -27,7 +27,7 @@ def _et_day(dt: datetime) -> str:
 
 
 def build_visitor_metrics(db: Session, *, days: int = 30) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=days)
     dialect = db.get_bind().dialect.name
 

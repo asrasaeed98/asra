@@ -295,9 +295,7 @@ def _is_admin_identifier(name: str) -> bool:
     low = name.lower()
     if low.endswith(_ADMIN_SUFFIXES) and norm not in _NYC_GEO_PREFERRED:
         return True
-    if norm.endswith("id") and len(norm) <= 12 and norm not in _NYC_GEO_PREFERRED:
-        return True
-    return False
+    return bool(norm.endswith("id") and len(norm) <= 12 and norm not in _NYC_GEO_PREFERRED)
 
 
 def _is_coordinate_field(name: str) -> bool:
@@ -307,9 +305,7 @@ def _is_coordinate_field(name: str) -> bool:
     tokens = _name_tokens(name)
     if tokens & {"latitude", "longitude", "lat", "lon", "lng"}:
         return True
-    if norm.startswith("computedregion") or norm.startswith("geocoded"):
-        return True
-    return False
+    return bool(norm.startswith(("computedregion", "geocoded")))
 
 
 def classify_field(

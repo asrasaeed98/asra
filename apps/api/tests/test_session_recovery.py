@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from findings_api.models import AnalysisSession
 from findings_api.session_recovery import (
@@ -14,26 +14,26 @@ def _session(**kwargs) -> AnalysisSession:
         "status": "ingesting",
         "phase": "ingest",
         "resource_ids": ["a"],
-        "updated_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(UTC),
     }
     defaults.update(kwargs)
     return AnalysisSession(**defaults)
 
 
 def test_stale_ingest_session_after_default_window():
-    session = _session(updated_at=datetime.now(timezone.utc) - timedelta(minutes=26))
+    session = _session(updated_at=datetime.now(UTC) - timedelta(minutes=26))
     assert is_session_stale(session) is True
 
 
 def test_active_ingest_not_stale():
-    session = _session(updated_at=datetime.now(timezone.utc) - timedelta(minutes=10))
+    session = _session(updated_at=datetime.now(UTC) - timedelta(minutes=10))
     assert is_session_stale(session) is False
 
 
 def test_large_download_uses_longer_stale_window():
     session = _session(
         config={"large_download": True},
-        updated_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+        updated_at=datetime.now(UTC) - timedelta(minutes=30),
     )
     assert stale_after(session) == timedelta(minutes=60)
     assert is_session_stale(session) is False
@@ -42,7 +42,7 @@ def test_large_download_uses_longer_stale_window():
 def test_large_download_stale_after_extended_window():
     session = _session(
         config={"large_download": True},
-        updated_at=datetime.now(timezone.utc) - timedelta(minutes=61),
+        updated_at=datetime.now(UTC) - timedelta(minutes=61),
     )
     assert is_session_stale(session) is True
 
@@ -69,7 +69,7 @@ def test_stale_failure_message_for_restart():
 def test_fail_stale_session_sets_contextual_message():
     session = _session(
         config={"large_download": True},
-        updated_at=datetime.now(timezone.utc) - timedelta(minutes=61),
+        updated_at=datetime.now(UTC) - timedelta(minutes=61),
     )
     # fail_stale_session needs a db session — verify message helper only here.
     assert "large dataset download" in stale_failure_message(session)

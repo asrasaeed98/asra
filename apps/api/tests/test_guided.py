@@ -6,26 +6,26 @@ from findings_api.models import CatalogResource
 
 
 def _row(**kwargs) -> CatalogResource:
-    defaults = dict(
-        id="wb:TEST",
-        portal="world_bank",
-        title="Test indicator",
-        description=None,
-        organization="WB",
-        tags=[],
-        format="JSON_WORLDBANK",
-        license_normalized="CC_BY",
-        license_raw=None,
-        license_display="CC BY",
-        attribution_required=True,
-        attribution_text="WB",
-        publisher="WB",
-        source_url="https://example.com",
-        resource_url="https://example.com/data",
-        search_text="gdp per capita income growth",
-        ingestible=True,
-        row_count_hint=15000,
-    )
+    defaults = {
+        "id": "wb:TEST",
+        "portal": "world_bank",
+        "title": "Test indicator",
+        "description": None,
+        "organization": "WB",
+        "tags": [],
+        "format": "JSON_WORLDBANK",
+        "license_normalized": "CC_BY",
+        "license_raw": None,
+        "license_display": "CC BY",
+        "attribution_required": True,
+        "attribution_text": "WB",
+        "publisher": "WB",
+        "source_url": "https://example.com",
+        "resource_url": "https://example.com/data",
+        "search_text": "gdp per capita income growth",
+        "ingestible": True,
+        "row_count_hint": 15000,
+    }
     defaults.update(kwargs)
     return CatalogResource(**defaults)
 

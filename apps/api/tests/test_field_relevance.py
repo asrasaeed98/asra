@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pandas as pd
+
 from findings_api.analysis.field_relevance import (
     classify_field,
     dedupe_geo_columns,
@@ -11,7 +13,6 @@ from findings_api.analysis.profile import profile_dataframe
 from findings_api.analysis.selector import plans_for_table
 from findings_api.analysis.types import ColumnProfile
 from findings_api.catalog.socrata import build_scalar_soql, scalar_field_names
-import pandas as pd
 
 
 def _col(name: str, kind: str, nunique: int = 10) -> ColumnProfile:

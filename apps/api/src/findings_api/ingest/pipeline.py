@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -25,7 +25,6 @@ from findings_api.ingest.download_policy import (
     large_download_start_message,
     resource_is_large,
 )
-from findings_api.progress_ticker import strip_activity_suffix
 from findings_api.ingest.duckdb_store import (
     build_analysis_view_sql,
     connect,
@@ -34,6 +33,7 @@ from findings_api.ingest.duckdb_store import (
 )
 from findings_api.licensing import is_allowed
 from findings_api.models import AnalysisSession, CatalogResource
+from findings_api.progress_ticker import strip_activity_suffix
 from findings_api.sampling import compute_analysis_n, sampling_tier
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def _set_progress(
     session.phase = phase
     session.message = message
     session.percent = percent
-    session.updated_at = datetime.now(timezone.utc)
+    session.updated_at = datetime.now(UTC)
     if status:
         session.status = status
     db.add(session)
@@ -63,7 +63,7 @@ def _touch_progress(db: Session, session_id: str) -> None:
     session = db.get(AnalysisSession, session_id)
     if not session or session.status not in ("ingesting", "analyzing"):
         return
-    session.updated_at = datetime.now(timezone.utc)
+    session.updated_at = datetime.now(UTC)
     db.add(session)
     db.commit()
 

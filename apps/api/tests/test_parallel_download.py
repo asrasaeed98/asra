@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from findings_api.ingest.pipeline import _ParallelDownloadProgress, _download_resource
+from findings_api.ingest.pipeline import _download_resource, _ParallelDownloadProgress
 from findings_api.models import AnalysisSession, CatalogResource
 
 

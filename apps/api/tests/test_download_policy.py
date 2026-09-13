@@ -4,7 +4,6 @@ import asyncio
 import json
 from unittest.mock import MagicMock
 
-
 from findings_api.catalog.socrata import page_soql, split_soql_limit
 from findings_api.config import settings
 from findings_api.ingest.download import fetch_socrata_json

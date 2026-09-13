@@ -13,8 +13,8 @@ import httpx
 from findings_api.catalog.socrata import (
     is_socrata_query_url,
     parse_query_url,
-    soda2_resource_url,
     socrata_headers,
+    soda2_resource_url,
     soql_select_columns,
     split_soql_limit,
 )
@@ -633,7 +633,7 @@ def _guess_kind(url: str, content_type: str | None, data: bytes) -> str:
     if "json" in low_url or "application/json" in ct:
         return "json"
     head = data[:200].lstrip()
-    if head.startswith(b"{") or head.startswith(b"["):
+    if head.startswith((b"{", b"[")):
         return "json"
     if b"," in head and b"\n" in head:
         return "csv"

@@ -75,7 +75,7 @@ def test_measure_slug_unique_and_safe():
 
 def test_joined_columns_are_aliased_not_value_1():
     conn = duckdb.connect()
-    injected, slug_l, slug_r = _build_joined(conn)
+    _injected, slug_l, slug_r = _build_joined(conn)
     cols = [r[0] for r in conn.execute("DESCRIBE analysis_joined").fetchall()]
     assert slug_l in cols
     assert slug_r in cols

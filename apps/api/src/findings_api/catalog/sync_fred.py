@@ -3,28 +3,28 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import httpx
 from sqlalchemy.orm import Session
 
-from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.probe import probe_url
+from findings_api.catalog.quality import apply_probe
+from findings_api.catalog.sync_limits import (
+    PENDING_PROBE_REASON,
+    build_search_text,
+    max_indexed,
+    prune_stale_portal_rows,
+    should_probe,
+    should_prune_after_sync,
+)
 from findings_api.config import settings
 from findings_api.ingest.download import _get_with_retry
 from findings_api.licensing import (
     attribution_required,
     default_attribution,
     is_allowed,
-)
-from findings_api.catalog.sync_limits import (
-    PENDING_PROBE_REASON,
-    build_search_text,
-    max_indexed,
-    prune_stale_portal_rows,
-    should_prune_after_sync,
-    should_probe,
 )
 from findings_api.models import CatalogResource
 
@@ -156,7 +156,7 @@ async def _index_series(
         columns=[{"name": "date"}, {"name": "value"}, {"name": "series_id"}],
         row_count_hint=None,
         byte_size=None,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
         search_text=build_search_text(title, notes, org, tags + [series_id]),
         ingestible=False,
     )

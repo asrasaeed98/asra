@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Self
 
 from findings_api.db import get_session_factory
 from findings_api.models import AnalysisSession
@@ -41,9 +42,9 @@ class ProgressTicker:
         self.interval_sec = interval_sec
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._started_at = datetime.now(timezone.utc)
+        self._started_at = datetime.now(UTC)
 
-    def __enter__(self) -> ProgressTicker:
+    def __enter__(self) -> Self:
         self._thread = threading.Thread(
             target=self._run,
             daemon=True,
@@ -68,7 +69,7 @@ class ProgressTicker:
             if not session or session.status not in _ACTIVE_STATUSES:
                 self._stop.set()
                 return
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             base = strip_activity_suffix(session.message or "")
             # During active row-level download progress, only refresh updated_at.
             if session.phase == "ingest" and (

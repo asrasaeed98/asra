@@ -47,9 +47,7 @@ def is_allowed(normalized: str | None, portal: str) -> bool:
         return False
     if normalized in ALLOWED_STRICT:
         return True
-    if portal in ("world_bank",) and normalized in ALLOWED_WITH_ATTRIBUTION:
-        return True
-    return False
+    return bool(portal in ("world_bank",) and normalized in ALLOWED_WITH_ATTRIBUTION)
 
 
 def attribution_required(normalized: str | None) -> bool:

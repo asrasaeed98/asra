@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import statistics
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -30,8 +30,8 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _duration_stats(durations: list[float]) -> dict[str, float | int] | None:
@@ -49,7 +49,7 @@ def _duration_stats(durations: list[float]) -> dict[str, float | int] | None:
 
 
 def build_ops_dashboard(db: Session, *, limit: int = 200, days: int = 30) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=days)
 
     total_sessions = db.scalar(select(func.count()).select_from(AnalysisSession)) or 0

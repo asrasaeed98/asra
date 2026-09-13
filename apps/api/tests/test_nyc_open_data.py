@@ -2,8 +2,8 @@
 
 import pytest
 
-from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.probe import ProbeResult
+from findings_api.catalog.quality import apply_probe
 from findings_api.catalog.socrata import (
     CATALOG_RESOURCE_URL_MAX_LEN,
     analysis_row_cap,

@@ -72,8 +72,7 @@ def _number_allowed(value: float, allowed: set[float]) -> bool:
         if abs(candidate - value) <= 0.01 * scale:
             return True
         if abs(round(candidate) - value) < 0.5 and abs(round(candidate) - candidate) < 0.01:
-            if abs(round(candidate) - value) < 0.5:
-                return True
+            return True
     return False
 
 
@@ -394,9 +393,7 @@ def template_summary(
 def blocks_to_plain_text(blocks: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for block in blocks:
-        if block.get("type") == "header" and block.get("text"):
-            parts.append(str(block["text"]))
-        elif block.get("type") == "paragraph" and block.get("text"):
+        if block.get("type") == "header" and block.get("text") or block.get("type") == "paragraph" and block.get("text"):
             parts.append(str(block["text"]))
         elif block.get("type") == "list":
             items = block.get("items") or []
@@ -521,7 +518,7 @@ def sanitize_summary_text(text: str) -> str:
             continue
         if stripped.startswith("#"):
             continue
-        if re.match(r"^executive summary\b", stripped, re.I):
+        if re.match(r"^executive summary\b", stripped, re.IGNORECASE):
             continue
         lines.append(line)
     collapsed = "\n".join(lines)
@@ -670,7 +667,7 @@ def legacy_text_to_blocks(text: str) -> list[dict[str, Any]]:
             continue
         if stripped.startswith("#"):
             continue
-        if re.match(r"^executive summary\b", stripped, re.I):
+        if re.match(r"^executive summary\b", stripped, re.IGNORECASE):
             continue
         bullet = re.match(r"^[-*•]\s+(.+)", stripped)
         if bullet:

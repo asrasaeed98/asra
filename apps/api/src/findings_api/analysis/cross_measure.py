@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 import pandas as pd
 from scipy import stats
 
-from findings_api.analysis.measure_semantics import MEASURE_COLUMN_NAMES, measure_slug, resolve_measure_label
+from findings_api.analysis.measure_semantics import (
+    MEASURE_COLUMN_NAMES,
+    measure_slug,
+    resolve_measure_label,
+)
 from findings_api.analysis.profile import read_table_frame, sql_ident
 from findings_api.analysis.tests.correlation import _MAX_P, _MIN_R, _score
 from findings_api.analysis.types import Finding
@@ -378,7 +382,7 @@ def run_cross_measure_analysis(
         year_max = int(merged["year"].max())
         coverage = {
             "strategy": strategy,
-            "matched_pairs": int(len(merged)),
+            "matched_pairs": len(merged),
             "entities": n_entities,
             "year_start": year_min,
             "year_end": year_max,
@@ -496,7 +500,7 @@ def run_cross_measure_analysis(
                 "primary_view": "panel_pooled",
                 "summary_note": _coverage_note(
                     strategy=strategy,
-                    n_pairs=int(len(merged)),
+                    n_pairs=len(merged),
                     n_entities=n_entities,
                     year_min=year_min,
                     year_max=year_max,

@@ -54,7 +54,7 @@ def _migrate_shared_columns(engine) -> None:
         if "analysis_sessions" in tables:
             existing = {col["name"] for col in insp.get_columns("analysis_sessions")}
             if "visitor_id" not in existing:
-                typedef = "VARCHAR(36)" if dialect == "postgresql" else "VARCHAR(36)"
+                typedef = "VARCHAR(36)"
                 conn.execute(text(f"ALTER TABLE analysis_sessions ADD COLUMN visitor_id {typedef}"))
 
         if dialect == "sqlite" and "catalog_resources" in tables:

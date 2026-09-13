@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -41,8 +41,8 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def is_session_stale(session: AnalysisSession, *, now: datetime | None = None) -> bool:
@@ -51,7 +51,7 @@ def is_session_stale(session: AnalysisSession, *, now: datetime | None = None) -
     updated = _as_utc(session.updated_at)
     if updated is None:
         return False
-    clock = now or datetime.now(timezone.utc)
+    clock = now or datetime.now(UTC)
     return clock - updated > stale_after(session)
 
 

@@ -36,9 +36,9 @@ def score_distribution(dist: dict) -> int:
         score += 25
     fmt = (dist.get("format") or dist.get("mediaType") or "").lower()
 
-    if url.endswith(".csv") or url.endswith(".csv?"):
+    if url.endswith((".csv", ".csv?")):
         score += 50
-    if url.endswith(".json") or url.endswith(".json?"):
+    if url.endswith((".json", ".json?")):
         score += 45
     if "csv" in fmt or "/csv" in url:
         score += 40
@@ -52,9 +52,13 @@ def score_distribution(dist: dict) -> int:
         score -= 60
 
     # Deprioritize portal landing pages (no file extension, shallow path)
-    if not any(url.endswith(ext) for ext in (".csv", ".json", ".tsv", ".txt")):
-        if url.count("/") <= 4 and "download" not in url and "api/" not in url:
-            score -= 35
+    if (
+        not any(url.endswith(ext) for ext in (".csv", ".json", ".tsv", ".txt"))
+        and url.count("/") <= 4
+        and "download" not in url
+        and "api/" not in url
+    ):
+        score -= 35
 
     return score
 

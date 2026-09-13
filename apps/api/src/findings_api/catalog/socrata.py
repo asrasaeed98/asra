@@ -128,7 +128,11 @@ def _socrata_column_kind(dtype: str) -> str:
 
 def _rank_scalar_columns(columns: list[dict], *, portal: str | None = PORTAL_NYC) -> list[str]:
     """Return scalar column names ordered by analytical relevance."""
-    from findings_api.analysis.field_relevance import _category_score, _is_coordinate_field, classify_field
+    from findings_api.analysis.field_relevance import (
+        _category_score,
+        _is_coordinate_field,
+        classify_field,
+    )
 
     scored: list[tuple[int, str]] = []
     has_preferred_geo = False

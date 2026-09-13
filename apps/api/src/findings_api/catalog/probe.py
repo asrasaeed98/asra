@@ -63,7 +63,7 @@ def probe_bytes(data: bytes, *, url: str = "", portal: str = "") -> ProbeResult:
         return _probe_fred_bytes(data)
 
     head = data[:512].lstrip().lower()
-    if head.startswith(b"<!doctype") or head.startswith(b"<html") or b"<head" in head[:200]:
+    if head.startswith((b"<!doctype", b"<html")) or b"<head" in head[:200]:
         return ProbeResult(False, "HTML page, not a data file", "HTML")
     if data[:2] == b"PK":
         return ProbeResult(False, "ZIP archive — unpack not supported yet", "ZIP")
@@ -217,8 +217,8 @@ async def _probe_socrata_url(url: str, *, client: httpx.AsyncClient) -> ProbeRes
     sample the public SODA2 ``/resource/{id}.json`` endpoint instead.
     """
     from findings_api.catalog.socrata import (
-        soda2_resource_url,
         socrata_headers,
+        soda2_resource_url,
         soql_select_columns,
     )
 

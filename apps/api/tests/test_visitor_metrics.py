@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from findings_api.db import Base, get_engine, get_session_factory
 from findings_api.models import AnalysisSession, AppVisit
@@ -11,7 +11,7 @@ def test_build_visitor_metrics_counts_unique_visitors():
     factory = get_session_factory()
     db = factory()
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         db.add_all(
             [
                 AppVisit(visitor_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", path="/"),
